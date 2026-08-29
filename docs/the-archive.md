@@ -74,12 +74,29 @@ else out of the week it was in.
 ## The signing key
 
 The index is signed with minisign (Ed25519) and the public key is compiled into MixEngine, so
-rotating it needs an application update. The private key lives only in this repository's Actions
-secrets:
+rotating it needs an application update — every installed copy checks the index against the key it
+was built with, and a new key makes all of them refuse the new index. Losing the private key is
+therefore not "generate another one"; it is a release.
+
+**What signs, and from where.** `.github/workflows/publish-index.yml` is the only thing that signs.
+It writes `secrets.MINISIGN_SECRET_KEY` to a file, signs, `shred -u`s it, and then verifies the
+signature against the committed `minisign.pub` — so a wrong secret fails the build rather than
+publishing an index nobody can check. `release/publish.sh` dispatches that workflow and touches no
+key at all.
+
+**Where the private key is not.** Not in this working tree. It was there once, next to
+`minisign.pub`, which is how the only copy of an unrecoverable key ends up inside the reach of a
+`git clean -fdx` or an `rm -rf` on an unset variable — both of which have happened on this machine.
+It now lives outside every repository, and `$MINISIGN_KEY` is how the hand-run examples in
+[adding-a-version.md](adding-a-version.md) name it:
 
 ```bash
-minisign -G -p minisign.pub -s minisign.key   # keep minisign.key out of git, forever
+export MINISIGN_KEY=~/.config/mixengine/minisign.key   # outside every git repository
+minisign -G -p minisign.pub -s "$MINISIGN_KEY"         # only when creating a key, which is once
 ```
+
+A copy on one disk is not a backup: it dies with the machine, at which point the Actions secret is
+the last one standing. Keep one somewhere that is neither — a password manager.
 
 `minisign.pub` is committed — it is public by definition, and having it in the tree is how a reader
 checks that the key compiled into MixEngine is the one signing this index.

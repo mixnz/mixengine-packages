@@ -54,7 +54,7 @@ python tools/nginx.py --version 1.30 --out dist/
 
 # Then regenerate and sign the index from what the releases actually contain
 python tools/mkindex.py --base-url … --out dist/index.json
-minisign -Sm dist/index.json -s minisign.key
+minisign -Sm dist/index.json -s "$MINISIGN_KEY"   # the key is not in this tree; see the-archive.md
 
 # And, when a publisher moves a support schedule, transcribe it again rather than editing a date
 python tools/eol.py            # compare every written date against its publisher

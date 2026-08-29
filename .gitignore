@@ -7,9 +7,11 @@ dist/
 # beside a newer .py is a file that can be imported instead of the source.
 __pycache__/
 
-# The private half of the signing key. It belongs in this repository's Actions secrets and nowhere
-# else — an index signed by a key that leaked is an index that can be forged, and the public key is
-# compiled into MixEngine, so recovering from that needs an application release.
+# The private half of the signing key. It belongs in this repository's Actions secrets, which is
+# what signs, and in a backup outside every working tree — never here, whatever the examples in
+# docs/ used to say. An index signed by a key that leaked is an index that can be forged, and the
+# public key is compiled into MixEngine, so recovering from either a leak or a loss needs an
+# application release. `*.key` below is the belt for this brace.
 minisign.key
 *.key
 
