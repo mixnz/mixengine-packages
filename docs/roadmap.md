@@ -33,8 +33,8 @@ tree still had to offer, so a saving of that size cost nothing anybody could arg
 
 The rule was written **after** MariaDB, because MariaDB is what taught it: three routes to one
 version produced three different feature sets, and fixing that is what
-[`10d4e81`](https://github.com/haiquang9994/mixengine-packages/commit/10d4e81) and
-[`6c344d0`](https://github.com/haiquang9994/mixengine-packages/commit/6c344d0) began. They did not
+[`10d4e81`](https://github.com/mixnz/mixengine-packages/commit/10d4e81) and
+[`6c344d0`](https://github.com/mixnz/mixengine-packages/commit/6c344d0) began. They did not
 finish it: a later audit of the six *finished* artifacts of a green run found four more asymmetries
 no recipe knew it had, and closing those took seven further commits; what that audit found is
 written down in [that rule](one-version-means-one-thing.md),

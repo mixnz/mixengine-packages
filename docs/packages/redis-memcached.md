@@ -71,7 +71,7 @@ than discovered later.
 
 The three alternatives are still no, for the reasons P8 gave. **Valkey**, which MixEngine's own
 table named, is the same POSIX program forked and sends a Windows user to WSL, which [ADR
-0003](https://github.com/haiquang9994/MixEngine/blob/master/.claude/decisions/0003-no-container-isolation.md)
+0003](https://github.com/mixnz/mixengine/blob/master/.claude/decisions/0003-no-container-isolation.md)
 excludes. **Memurai** is proprietary, and a repository that redistributes what it packs cannot pack
 one. **The community rebuilds** are the fork nobody maintains — and compiling here is precisely how
 their method is borrowed without their binaries: the tarball is upstream's, checked against
@@ -178,7 +178,7 @@ a walk over the tree would find nothing to license.
 *memcached is built without `--enable-shutdown`, on purpose.* It would give the supervisor a graceful
 stop to send; what it actually gives is an unauthenticated `shutdown` verb on a loopback port that
 anything served by the same machine can reach. [ADR
-0008](https://github.com/haiquang9994/MixEngine/blob/master/.claude/decisions/0008-no-signal-stop-on-windows.md)
+0008](https://github.com/mixnz/mixengine/blob/master/.claude/decisions/0008-no-signal-stop-on-windows.md)
 already names Memcached as a service where stopping without a signal costs nothing — a cache has
 nothing unflushed to lose — so the artifact is stopped by terminating it, and the smoke test proves
 that is enough.

@@ -1,6 +1,6 @@
 # mixengine-packages
 
-Runtime and service artifacts for [MixEngine](https://github.com/haiquang9994/MixEngine), and the
+Runtime and service artifacts for [MixEngine](https://github.com/mixnz/mixengine), and the
 signed index that tells a MixEngine daemon what exists and where to get it.
 
 This repository holds **no MixEngine source code**. It exists because the two things release on

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/haiquang9994/mixengine-packages/schema/index.schema.json",
+  "$id": "https://github.com/mixnz/mixengine-packages/schema/index.schema.json",
   "title": "MixEngine package index",
   "description": "The single signed document a MixEngine daemon reads to learn what runtimes and services exist and where to fetch them. Versions are never removed from it: a blueprint pinning an old one has to keep working, which is also why no url here may point at an upstream host.",
   "type": "object",

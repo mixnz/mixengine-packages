@@ -26,7 +26,7 @@ import sys
 import urllib.request
 from pathlib import Path
 
-OURS = "github.com/haiquang9994/mixengine-packages"
+OURS = "github.com/mixnz/mixengine-packages"
 
 
 def load(source: str) -> dict:

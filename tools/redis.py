@@ -21,7 +21,7 @@ that is depends on the line rather than on this recipe: one, ``cygwin1.dll``, fo
 
 The alternatives are still no, and for the reasons P8 gave. **Valkey** is the same POSIX program
 forked and sends a Windows user to WSL, which
-[ADR 0003](https://github.com/haiquang9994/MixEngine/blob/master/.claude/decisions/0003-no-container-isolation.md)
+[ADR 0003](https://github.com/mixnz/mixengine/blob/master/.claude/decisions/0003-no-container-isolation.md)
 excludes. **Memurai** is proprietary; a repository that redistributes what it packs cannot pack one.
 **The community rebuilds** are a fork nobody maintains — and the point of compiling here is that
 their *method* can be borrowed without their binaries: the tarball is upstream's, checked against
@@ -99,7 +99,7 @@ HASHES = "https://raw.githubusercontent.com/redis/redis-hashes/master/README"
 # the recipe resolves a version correctly and then dies on the download with a status that reads
 # like the release was withdrawn. Named rather than disguised: a publisher blocking a default agent
 # is entitled to know which program replaced it.
-AGENT = {"User-Agent": "mixengine-packages (+https://github.com/haiquang9994/mixengine-packages)"}
+AGENT = {"User-Agent": "mixengine-packages (+https://github.com/mixnz/mixengine-packages)"}
 
 # The oldest line offered, and the choice is about licences as much as about age. Redis 7.2 is the
 # last BSD-3 release line; 7.4 is RSALv2/SSPLv1 and 8.0 onwards adds AGPLv3 as a third option. Both

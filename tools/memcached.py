@@ -68,7 +68,7 @@ somebody else operates. MixEngine supervises one instance on loopback for one de
 *No ``shutdown`` command, deliberately.* ``--enable-shutdown`` would give the supervisor a graceful
 stop to send, and what it actually gives is an unauthenticated ``shutdown`` verb on a loopback port
 that any page served by the same machine can reach.
-[ADR 0008](https://github.com/haiquang9994/MixEngine/blob/master/.claude/decisions/0008-no-signal-stop-on-windows.md)
+[ADR 0008](https://github.com/mixnz/mixengine/blob/master/.claude/decisions/0008-no-signal-stop-on-windows.md)
 already names Memcached as a service where stopping without a signal costs nothing — a cache has
 nothing unflushed to lose — so the smoke test stops it the way the supervisor will, by terminating
 it, and checks that it goes.

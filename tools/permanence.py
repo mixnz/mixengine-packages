@@ -56,7 +56,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-PUBLISHED = "https://github.com/haiquang9994/mixengine-packages/releases/download/index/index.json"
+PUBLISHED = "https://github.com/mixnz/mixengine-packages/releases/download/index/index.json"
 SLICES = 8
 TIMEOUT = 300
 

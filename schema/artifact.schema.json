@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/haiquang9994/mixengine-packages/schema/artifact.schema.json",
+  "$id": "https://github.com/mixnz/mixengine-packages/schema/artifact.schema.json",
   "title": "mixengine-artifact.json",
   "description": "Written into the root of every archive this repository publishes. It is the reason the daemon can install a borrowed artifact without knowing anything about how its publisher lays out a directory: the archive keeps that layout, and this file says where things are. An archive without one is not an artifact.",
   "type": "object",

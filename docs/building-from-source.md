@@ -16,7 +16,7 @@ spent on code that failed to compile. It was spent on **builds that exited zero 
 something wrong**, which is the failure this repository is least able to afford: an artifact is
 published once and then trusted forever by machines that cannot ask questions.
 
-[table]: https://github.com/haiquang9994/MixEngine/blob/master/.claude/operations/runtime-packaging.md
+[table]: https://github.com/mixnz/mixengine/blob/master/.claude/operations/runtime-packaging.md
 
 ## The rule the whole thing reduces to
 

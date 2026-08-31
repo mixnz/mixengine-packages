@@ -108,7 +108,7 @@ POSTGRES = "https://www.postgresql.org/versions.json"
 
 # php.net answers 403 to `Python-urllib/3.x` on some paths, the way download.redis.io does, and the
 # fix is the same one `borrow.fetch` already takes an argument for.
-AGENT = {"User-Agent": "mixengine-packages (+https://github.com/haiquang9994/mixengine-packages)"}
+AGENT = {"User-Agent": "mixengine-packages (+https://github.com/mixnz/mixengine-packages)"}
 
 
 def _get(url: str) -> bytes:

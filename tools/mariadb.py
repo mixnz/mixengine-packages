@@ -48,7 +48,7 @@ MixEngine reaches for them. They are named in ``upstream.removed`` rather than q
 
 Python 3 stdlib only, by policy: this runs on a GitHub runner with nothing installed.
 
-.. _MixEngine's runtime-packaging.md: https://github.com/haiquang9994/MixEngine/blob/master/.claude/operations/runtime-packaging.md
+.. _MixEngine's runtime-packaging.md: https://github.com/mixnz/mixengine/blob/master/.claude/operations/runtime-packaging.md
 """
 
 from __future__ import annotations

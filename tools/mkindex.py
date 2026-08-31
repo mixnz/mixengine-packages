@@ -103,6 +103,32 @@ def collect(directory: Path, base_url: str) -> list[dict]:
     return found
 
 
+def rebase(index: dict, base_url: str) -> int:
+    """Re-point every artifact carried over from *index* at *base_url*.
+
+    A ``url`` records where the bytes are, not where they were when the entry was written. Moving
+    this repository between owners moved every asset with it and left a redirect behind, and a
+    redirect lasts exactly as long as nobody registers the old name. Re-stating the base on each run
+    is a no-op while nothing has moved, and it is what lets `verify.py` keep insisting — without an
+    exception carved out for history — that every URL in the index is one of ours.
+
+    Only the release-download shape is rewritten. Anything else is left exactly as it was so that
+    `verify.py` reports it rather than this quietly laundering it into looking like ours.
+    """
+    base = base_url.rstrip("/")
+    moved = 0
+    for package in index.get("packages", []):
+        for artifact in package.get("artifacts", []):
+            _, marker, tail = artifact["url"].partition("/releases/download/")
+            if not marker:
+                continue
+            moved_to = f"{base}/{tail}"
+            if moved_to != artifact["url"]:
+                artifact["url"] = moved_to
+                moved += 1
+    return moved
+
+
 def merge(index: dict, found: list, dates: dict, channel: str) -> dict:
     """Add the new artifacts, replacing an artifact of the same kind/version/os/arch in place.
 
@@ -160,7 +186,7 @@ def main() -> None:
     parser.add_argument("--previous", help="path or URL of the index being extended")
     parser.add_argument("--base-url", required=True,
                         help="where release assets live, e.g. "
-                             "https://github.com/haiquang9994/mixengine-packages/releases/download")
+                             "https://github.com/mixnz/mixengine-packages/releases/download")
     parser.add_argument("--eol", type=Path, default=eol.DATA)
     parser.add_argument("--channel", default="stable", choices=["stable", "rc", "beta"])
     parser.add_argument("--out", type=Path, default=Path("dist/index.json"))
@@ -171,13 +197,17 @@ def main() -> None:
 
     dates = eol.read(args.eol) if args.eol.exists() else {}
     found = collect(args.artifacts, args.base_url) if args.artifacts.is_dir() else []
-    index = merge(load_previous(args.previous), found, dates, args.channel)
+    previous = load_previous(args.previous)
+    moved = rebase(previous, args.base_url)
+    index = merge(previous, found, dates, args.channel)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(index, indent=2, sort_keys=False) + "\n", encoding="utf-8")
 
     artifacts = sum(len(p["artifacts"]) for p in index["packages"])
     print(f"added {len(found)} artifact(s)")
+    if moved:
+        print(f"re-pointed {moved} carried-over artifact(s) at {args.base_url}")
     print(f"wrote {args.out}: {len(index['packages'])} package(s), {artifacts} artifact(s)")
 
 

@@ -45,7 +45,7 @@ from the moved tree rather than taking either on trust.
 ``docs/building-from-source.md`` is the other half of this file and was written before it, out of
 the PHP pipeline. Everything in it applies here.
 
-.. _MixEngine's runtime table: https://github.com/haiquang9994/MixEngine/blob/master/.claude/operations/runtime-packaging.md
+.. _MixEngine's runtime table: https://github.com/mixnz/mixengine/blob/master/.claude/operations/runtime-packaging.md
 """
 
 from __future__ import annotations
