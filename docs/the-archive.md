@@ -100,3 +100,31 @@ the last one standing. Keep one somewhere that is neither — a password manager
 
 `minisign.pub` is committed — it is public by definition, and having it in the tree is how a reader
 checks that the key compiled into MixEngine is the one signing this index.
+
+## The second key, for blueprints
+
+`blueprints.pub` is a **different pair, deliberately** — MixEngine's roadmap task T78a, which taught
+`blueprint.import` to check a signature. What that signature vouches for is not a list of downloads
+but a `[scaffold]` command: a blueprint the gallery signed may be offered to run arbitrary code in a
+new project's directory, on somebody's machine. One compromise costing both the index *and* that
+would be one blast radius where there should be two, so the two are separate keys with separate
+secrets.
+
+Everything else about it is the index key's arrangement, one name along, because a second story to
+keep in step would be a second story to get wrong:
+
+```bash
+export BLUEPRINT_KEY=~/.config/mixengine/blueprints.key   # beside the index key, outside every repo
+minisign -G -p blueprints.pub -s "$BLUEPRINT_KEY"         # only when creating a key, which is once
+```
+
+The private half is in this repository's Actions secrets as `BLUEPRINT_SECRET_KEY` and
+`BLUEPRINT_PASSWORD`, and the public half is committed here and compiled into MixEngine as
+`blueprints::trust::PUBLIC_KEY`. Rotating it needs an application release, exactly as rotating the
+index key does — and for a sharper reason: a MixEngine that trusted a key it could be told about
+would be a MixEngine that runs commands somebody else vouched for.
+
+**Nothing signs with it yet.** The gallery is T79, and the workflow that signs its blueprints arrives
+with it; what exists today is the key, so that task starts with a signature it can verify rather than
+a secret to mint first. A blueprint with no signature is still importable — it is marked untrusted,
+for good, and its command needs `mix blueprint apply --run-untrusted-scaffold` before it will run.
