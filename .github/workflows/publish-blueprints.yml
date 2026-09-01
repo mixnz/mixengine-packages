@@ -59,6 +59,15 @@ jobs:
             --key-source "$TRUST" \
             --pub blueprints.pub
 
+      # Outside the signing step, and before it, so a dry run's artifact holds exactly the files a
+      # real run would sign. A rehearsal that uploads nothing rehearses nothing.
+      - name: collect what will be signed
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp "$GALLERY"/*.toml dist/
+          ls -la dist
+
       - name: sign
         if: inputs.publish
         env:
@@ -72,8 +81,6 @@ jobs:
             exit 1
           fi
           sudo apt-get update -qq && sudo apt-get install -y -qq minisign
-          mkdir -p dist
-          cp "$GALLERY"/*.toml dist/
           printf '%s' "$BLUEPRINT_SECRET_KEY" > blueprints.key
           for file in dist/*.toml; do
             printf '%s\n' "$BLUEPRINT_PASSWORD" | minisign -S -m "$file" -s blueprints.key
