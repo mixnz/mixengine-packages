@@ -124,7 +124,27 @@ The private half is in this repository's Actions secrets as `BLUEPRINT_SECRET_KE
 index key does — and for a sharper reason: a MixEngine that trusted a key it could be told about
 would be a MixEngine that runs commands somebody else vouched for.
 
-**Nothing signs with it yet.** The gallery is T79, and the workflow that signs its blueprints arrives
-with it; what exists today is the key, so that task starts with a signature it can verify rather than
-a secret to mint first. A blueprint with no signature is still importable — it is marked untrusted,
-for good, and its command needs `mix blueprint apply --run-untrusted-scaffold` before it will run.
+**What signs with it, and from where.** `.github/workflows/publish-blueprints.yml` is the only thing
+that does — MixEngine's task T79a. It checks out `mixnz/mixengine` at a ref, reads the six manifests
+out of the gallery in that checkout, signs each one, `shred -u`s the key, and verifies every
+signature against the committed `blueprints.pub`. **The manifests are never copied into this
+repository**: there is one gallery and it lives over there, so what is published here cannot drift
+from what the application ships. `release/publish-blueprints.sh` dispatches it and touches no key at
+all.
+
+Before it signs, the run proves the link the index's publish never has to. `publish-index.yml`
+verifies what it signed against `minisign.pub`, which answers *did the secret and the public half
+match*; for blueprints that is one short, because the key that decides the answer is the constant
+compiled into MixEngine. So the run reads `blueprints::trust::PUBLIC_KEY` out of the checkout it
+already has and fails **before** signing when the two disagree. A key rotation that has reached only
+one of the two places is then a red run, rather than a tag full of files no installed copy will
+accept.
+
+Two things the moved `blueprints` tag forced. `--clobber` overwrites what is uploaded and deletes
+nothing, so a slug the gallery drops would keep a valid signature at a stable URL for good — and
+MixEngine decides trust when a blueprint arrives and never re-examines it, so anything the gallery no
+longer contains is pruned after every upload. And *created* is not *published*: the run downloads
+what it just uploaded and verifies that, which is `check-archive.yml`'s lesson one tag along. `check-blueprints.yml` says weekly whether the published set is still master's.
+
+A blueprint with no signature is still importable — it is marked untrusted, for good, and its command
+needs `mix blueprint apply --run-untrusted-scaffold` before it will run.

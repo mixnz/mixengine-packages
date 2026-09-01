@@ -2597,6 +2597,38 @@ rather than the ones the builds uploaded:
 8.5.9 is the one with a before to compare against: 36 shared extensions and `pdo_firebird` among
 them, now 30 and gone.
 
+### [x] P15 — Sign the blueprint gallery, and prove the key before signing
+
+The second key had been minted and signed nothing. MixEngine's T79 compiled its six blueprints into
+the binary and trusted them there without a signature — correctly, since one travelling inside the
+binary that holds the key proves nothing the binary has not proved already — which left the
+signatures with no channel at all. This is that channel, and MixEngine's T79a asked for it:
+`<name>.toml` with a `.minisig` beside it, under a moved `blueprints` tag, cut from a
+`mixnz/mixengine` checkout so **no manifest is ever copied into this repository**. There is one
+gallery; this repository owns the key, not the blueprints.
+
+**The step worth having is the one the index's publish does not need.** `publish-index.yml` verifies
+what it signed against `minisign.pub`, which answers *did the secret and the public half match*. For
+blueprints that is one link short: what decides whether a signature is worth anything is the constant
+compiled into MixEngine, so the run reads `blueprints::trust::PUBLIC_KEY` out of the checkout it
+already has and fails before signing when the two disagree. A half-finished key rotation is a red run
+instead of a published tag nobody can use. `tools/blueprints.py` is what compares them, and it also
+reads the gallery: every file parses, every *stem* is a slug MixEngine will file. The stem, because
+the stem is what a blueprint gets filed under — `[blueprint] name` is display text and says
+`Next.js`. It refuses to be a second renderer: canonical form is settled by `manifest::render` over
+there.
+
+**Two things the moved tag forced.** `--clobber` deletes nothing, so a slug the gallery drops would
+keep a valid signature at a stable URL for good — and MixEngine decides trust when a blueprint
+arrives and never re-examines it, so the orphan is pruned after every upload. And *created* is not
+*published*, which is P11's lesson one tag along: the run downloads what it just uploaded and
+verifies that. `check-blueprints.yml` says weekly whether the published set is still master's, on
+`check-eol.yml`'s clock and for its reason.
+
+**The roster is not written down here.** How many blueprints the gallery holds is MixEngine's
+decision, asserted by its own tests; a copy kept in this repository would be a copy to keep in step
+by hand, and the weekly check is what makes a deliberate addition or removal visible anyway.
+
 ---
 
 ## Working on this file
