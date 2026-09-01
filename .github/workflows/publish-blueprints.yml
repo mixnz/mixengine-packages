@@ -1,0 +1,141 @@
+name: publish blueprints
+
+# The gallery is compiled into MixEngine and trusted there without a signature, because one carried
+# inside the binary that holds the key proves nothing the binary has not proved already. This is the
+# other channel: the same manifests as files, each signed, so one downloaded by hand lands trusted.
+# MixEngine's roadmap task T79a.
+#
+# The bytes are never copied into this repository. They are read out of a mixengine checkout at the
+# ref being published, so there is one gallery and not two — and the release notes name the commit,
+# because `master` moves and a run would otherwise be unreproducible afterwards.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'The mixnz/mixengine ref to cut the gallery from.'
+        required: false
+        default: master
+        type: string
+      publish:
+        description: 'Upload the signed blueprints. Off means read and check only.'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+env:
+  BLUEPRINT_TAG: blueprints
+  GALLERY: mixengine/crates/mixengine-core/src/blueprints/gallery
+  TRUST: mixengine/crates/mixengine-core/src/blueprints/trust.rs
+
+jobs:
+  blueprints:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: mixnz/mixengine
+          ref: ${{ inputs.ref }}
+          path: mixengine
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+
+      - name: say what is being cut
+        run: |
+          set -euo pipefail
+          echo "MIXENGINE_SHA=$(git -C mixengine rev-parse HEAD)" >> "$GITHUB_ENV"
+          git -C mixengine log -1 --oneline
+
+      # Both halves before anything is signed: the gallery has to be readable, and the key this
+      # repository holds has to be the constant the application checks against. A signature made
+      # with a key no installed MixEngine accepts is worse than no signature — it looks published.
+      - name: read the gallery and prove the key chain
+        run: |
+          python tools/blueprints.py \
+            --gallery "$GALLERY" \
+            --key-source "$TRUST" \
+            --pub blueprints.pub
+
+      - name: sign
+        if: inputs.publish
+        env:
+          BLUEPRINT_SECRET_KEY: ${{ secrets.BLUEPRINT_SECRET_KEY }}
+          BLUEPRINT_PASSWORD: ${{ secrets.BLUEPRINT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BLUEPRINT_SECRET_KEY:-}" ]; then
+            echo "::error::BLUEPRINT_SECRET_KEY is not set. See 'The second key, for blueprints'"
+            echo "::error::in docs/the-archive.md."
+            exit 1
+          fi
+          sudo apt-get update -qq && sudo apt-get install -y -qq minisign
+          mkdir -p dist
+          cp "$GALLERY"/*.toml dist/
+          printf '%s' "$BLUEPRINT_SECRET_KEY" > blueprints.key
+          for file in dist/*.toml; do
+            printf '%s\n' "$BLUEPRINT_PASSWORD" | minisign -S -m "$file" -s blueprints.key
+          done
+          shred -u blueprints.key
+          # Against the key in the tree, which the step above proved is the key MixEngine compiles
+          # in. Signing with a key nobody can check is worth nothing.
+          for file in dist/*.toml; do
+            minisign -V -m "$file" -p blueprints.pub
+          done
+          ls -la dist
+
+      - name: publish
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view "$BLUEPRINT_TAG" >/dev/null 2>&1 || \
+            gh release create "$BLUEPRINT_TAG" --title "Blueprint gallery" \
+              --notes "The gallery as signed files."
+          gh release upload "$BLUEPRINT_TAG" dist/*.toml dist/*.minisig --clobber
+          gh release edit "$BLUEPRINT_TAG" --notes "The gallery as signed files, cut from mixnz/mixengine@${MIXENGINE_SHA}.
+
+          Import one with \`mix blueprint import <file>\` — the \`.minisig\` beside it is what makes it land trusted. A slug this home already holds needs \`--overwrite\`.
+
+          The tag is moved rather than added to, so the URL never changes."
+
+      # `--clobber` overwrites what is uploaded and touches nothing else, so on a moved tag a slug
+      # the gallery dropped would keep a valid signature at a stable URL for good — and MixEngine
+      # decides trust when a blueprint arrives and never re-examines it. So the orphan goes.
+      - name: remove what the gallery no longer contains
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          (cd dist && ls -1 ./*.toml ./*.minisig | sed 's|^\./||') | sort > expected.txt
+          gh release view "$BLUEPRINT_TAG" --json assets -q '.assets[].name' | sort > published.txt
+          comm -13 expected.txt published.txt > orphans.txt
+          while read -r orphan; do
+            [ -n "$orphan" ] || continue
+            echo "removing $orphan, which the gallery no longer contains"
+            gh release delete-asset "$BLUEPRINT_TAG" "$orphan" --yes
+          done < orphans.txt
+
+      # Created and published are different claims — check-archive.yml is in this repository for
+      # exactly that reason. What a person downloads is what has to verify.
+      - name: verify what is actually published
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p downloaded
+          gh release download "$BLUEPRINT_TAG" --dir downloaded --pattern '*' --clobber
+          for file in downloaded/*.toml; do
+            minisign -V -m "$file" -p blueprints.pub
+            cmp "$file" "dist/$(basename "$file")"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: blueprints
+          path: dist/
