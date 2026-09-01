@@ -1,0 +1,74 @@
+name: check blueprints
+
+# After T79a, a manifest edited in mixengine leaves the file published here quietly stale, and
+# nothing anywhere is obliged to notice. This is the obligation. check-eol.yml's shape and its
+# reason: a claim that can rot while nobody touches anything needs a clock, not a build step.
+#
+# It reports; it does not publish. Cutting the gallery again names a ref, and that is a person's
+# decision — as is doing nothing about it, when master is ahead of a release on purpose.
+on:
+  schedule:
+    # Tuesday morning UTC, a day off check-eol's Monday, so two unrelated failures never arrive
+    # together and get read as one.
+    - cron: '41 6 * * 2'
+  workflow_dispatch:
+  # The two paths in this repository that can change the answer.
+  push:
+    paths:
+      - 'tools/blueprints.py'
+      - '.github/workflows/check-blueprints.yml'
+
+env:
+  PUBLISHED: https://github.com/${{ github.repository }}/releases/download/blueprints
+  GALLERY: mixengine/crates/mixengine-core/src/blueprints/gallery
+  TRUST: mixengine/crates/mixengine-core/src/blueprints/trust.rs
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: mixnz/mixengine
+          ref: master
+          path: mixengine
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+
+      - name: compare what is published with mixengine master
+        id: compare
+        # `shell: bash` and not the default, because the default is `bash -e` *without* pipefail:
+        # piping into tee would hand the step tee's exit code and a drifted file would pass.
+        shell: bash
+        run: |
+          python tools/blueprints.py \
+            --gallery "$GALLERY" \
+            --key-source "$TRUST" \
+            --pub blueprints.pub \
+            --published "$PUBLISHED" | tee blueprints.log
+
+      # A failure here is not "the build is broken", it is "what people can download is not what
+      # this build ships", which reads very differently to whoever opens it.
+      - name: say what to do about it
+        if: failure() && steps.compare.outcome == 'failure'
+        run: |
+          {
+            echo '## The published gallery is not what mixengine master holds'
+            echo
+            echo 'Cut it again:'
+            echo
+            echo '```'
+            echo 'release/publish-blueprints.sh'
+            echo '```'
+            echo
+            echo 'If the key chain is what failed, do **not** publish: rotating the gallery key is'
+            echo 'an application release, and the MixEngine carrying the new key goes out first.'
+            echo
+            echo '<details><summary>what the check saw</summary>'
+            echo
+            echo '```'
+            tail -c 60000 blueprints.log || true
+            echo '```'
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
