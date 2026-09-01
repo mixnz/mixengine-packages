@@ -21,6 +21,27 @@ release/build.sh --help
 The scripts read the repository off `git remote origin`, wait for the run to finish, and print the
 next step. All they need is a logged-in `gh` (`gh auth login`).
 
+## The blueprint gallery
+
+A different clock again, and a different key — MixEngine's task T79a:
+
+```bash
+release/publish-blueprints.sh              # from mixengine master
+release/publish-blueprints.sh --ref v0.2.0 # from a tag
+release/publish-blueprints.sh --dry        # read the gallery and check the key only
+```
+
+MixEngine ships its six blueprints inside the binary, so this is not how anybody gets one. It is how
+a blueprint an installed build does *not* carry reaches it, and how a downloaded file lands
+**trusted** instead of untrusted for good. The manifests are read out of a `mixnz/mixengine`
+checkout the workflow makes; nothing about the gallery is kept here except the key that vouches for
+it.
+
+**The run fails before it signs anything** when `blueprints.pub` and MixEngine's compiled-in
+`blueprints::trust::PUBLIC_KEY` disagree, which is what a half-finished key rotation looks like.
+Publish the MixEngine carrying the new key first; a signature no installed copy accepts is worse
+than no signature, because it looks published.
+
 ## Three things that are silent when you get them wrong, and are handled here
 
 1. **`release` defaults to `false`** on every build workflow, and so does `publish` on
