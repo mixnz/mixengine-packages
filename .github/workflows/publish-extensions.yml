@@ -1,0 +1,157 @@
+name: publish extensions
+
+# `extensions.json` is what `mix extension available` reads: every extension as its own manifest,
+# signed with the index key and served from the same moved `index` tag as `index.json`. MixEngine's
+# roadmap task T81a.
+#
+# The roster is this repository's — `data/extensions/<id>.toml` — and that is where it parts company
+# with publish-blueprints.yml, whose manifests are compiled into MixEngine and so had to be read out
+# of a checkout. Nothing of the sort is compiled in here, and what an entry describes is a
+# third-party artifact at a URL with a hash: exactly what this repository already exists to describe.
+#
+# But nothing here decides whether a manifest is valid. The generator is built out of a mixengine
+# checkout and uses that build's own reader, so what this run refuses is what an installed MixEngine
+# refuses — and the same build holds `index::PUBLIC_KEY`, which is how the key chain is proved
+# without scraping a constant out of a source file the way tools/blueprints.py has to.
+#
+# Its own workflow rather than a job in publish-index.yml, for the reason the two documents are two
+# documents: that one downloads every asset of every release and runs the parity comparison before it
+# generates anything, and a red parity step has no business stopping the registry. Two uploads to one
+# tag do not collide — they name different files.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'The mixnz/mixengine ref to build the generator from.'
+        required: false
+        default: master
+        type: string
+      publish:
+        description: 'Upload the signed registry. Off means generate and check only.'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+env:
+  INDEX_TAG: index
+  MANIFESTS: data/extensions
+
+jobs:
+  extensions:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: mixnz/mixengine
+          ref: ${{ inputs.ref }}
+          path: mixengine
+
+      # No toolchain action: mixengine's rust-toolchain.toml is the single source of truth for the
+      # version, and `rustup toolchain install` with no argument installs exactly what it pins.
+      - name: install the pinned toolchain
+        working-directory: mixengine
+        run: |
+          rustup toolchain install --no-self-update
+          rustup show active-toolchain
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: mixengine
+          key: extensions
+
+      - name: say what is being cut
+        run: |
+          set -euo pipefail
+          echo "MIXENGINE_SHA=$(git -C mixengine rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "PACKAGES_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          git -C mixengine log -1 --oneline
+
+      # Generation and the key chain are one step because they are one function: `assemble` proves
+      # the committed key is the constant this build compiles in before it opens a manifest. A
+      # signature made with a key no installed MixEngine accepts is worse than no signature, because
+      # it looks published — so a half-finished key rotation fails here rather than at a stable URL.
+      #
+      # Outside the signing step and before it, so a dry run's artifact holds exactly the bytes a
+      # real run would sign. A rehearsal that produces nothing rehearses nothing.
+      - name: generate, and prove the key first
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cargo run --manifest-path mixengine/Cargo.toml --locked \
+            -p mixengine-core --example extensions_json -- \
+            --manifests "$MANIFESTS" \
+            --pub minisign.pub \
+            --generated-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --out dist/extensions.json
+          cat dist/extensions.json
+
+      - name: sign
+        if: inputs.publish
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${MINISIGN_SECRET_KEY:-}" ]; then
+            echo "::error::MINISIGN_SECRET_KEY is not set. It is the index key — the same secret"
+            echo "::error::publish-index.yml signs with. See docs/the-archive.md."
+            exit 1
+          fi
+          sudo apt-get update -qq && sudo apt-get install -y -qq minisign
+          printf '%s' "$MINISIGN_SECRET_KEY" > minisign.key
+          printf '%s\n' "$MINISIGN_PASSWORD" | minisign -S -m dist/extensions.json -s minisign.key
+          shred -u minisign.key
+          # Against the key in the tree, which the step above already proved is the key MixEngine
+          # compiles in. Signing with a key nobody can check is worth nothing.
+          minisign -V -m dist/extensions.json -p minisign.pub
+
+      - name: publish
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view "$INDEX_TAG" >/dev/null 2>&1 || \
+            gh release create "$INDEX_TAG" --title "Package index" \
+              --notes "The signed documents MixEngine reads. Always the newest ones; the tag is moved rather than added to, so the URLs never change."
+          gh release upload "$INDEX_TAG" dist/extensions.json dist/extensions.json.minisig --clobber
+
+      # Created and published are different claims — check-archive.yml is in this repository for
+      # exactly that reason. What a person downloads is what has to verify.
+      - name: verify what is actually published
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p downloaded
+          gh release download "$INDEX_TAG" --dir downloaded \
+            --pattern 'extensions.json*' --clobber
+          minisign -V -m downloaded/extensions.json -p minisign.pub
+          cmp downloaded/extensions.json dist/extensions.json
+
+      # `master` moves, and so does this repository's own roster, so a run nobody can reproduce
+      # afterwards is a document nobody can account for. publish-blueprints.yml names its source
+      # commit for the same reason; publish-index.yml has no need to, because it regenerates from
+      # what the releases hold rather than from a tree.
+      #
+      # Written after the verify step rather than in `publish`, so notes never claim a document that
+      # failed to come back down.
+      - name: say what it was cut from
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release edit "$INDEX_TAG" --notes "The signed documents MixEngine reads. Always the newest ones; the tag is moved rather than added to, so the URLs never change.
+
+          \`extensions.json\` was cut from mixnz/mixengine-packages@${PACKAGES_SHA}, with a generator built from mixnz/mixengine@${MIXENGINE_SHA}."
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extensions
+          path: dist/extensions.json*

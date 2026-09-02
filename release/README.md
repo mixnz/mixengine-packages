@@ -42,6 +42,31 @@ it.
 Publish the MixEngine carrying the new key first; a signature no installed copy accepts is worse
 than no signature, because it looks published.
 
+## The extension registry
+
+The roster in `data/extensions/` becomes the signed `extensions.json` that `mix extension available`
+reads — MixEngine's task T81a:
+
+```bash
+release/publish-extensions.sh              # generator from mixengine master
+release/publish-extensions.sh --dry        # generate and check the key, sign nothing
+```
+
+The **index key** signs it, not a third one: an extension is a binary downloaded and supervised,
+which is the package index's blast radius exactly, so a separate key would separate nothing. It goes
+to the `index` tag beside `index.json`, in its own workflow rather than as a job in
+`publish-index.yml` — that one rebuilds the index from every release there is, and a red parity step
+has no business stopping the registry.
+
+Unlike the gallery, **the manifests are this repository's**: nothing about an extension is compiled
+into MixEngine. What comes from a `mixnz/mixengine` checkout is the reader that judges a manifest and
+the constant that says which key an installed copy checks against — so a run refuses exactly what a
+machine would refuse, and **fails before it signs anything** when `minisign.pub` is no longer that
+constant.
+
+Adding an extension is a file in `data/extensions/` named after the id it declares, and a run of the
+command above.
+
 ## Three things that are silent when you get them wrong, and are handled here
 
 1. **`release` defaults to `false`** on every build workflow, and so does `publish` on

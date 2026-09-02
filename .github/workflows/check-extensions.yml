@@ -1,0 +1,83 @@
+name: check extensions
+
+# After T81a, a manifest added to data/extensions/ leaves the published document quietly stale, and
+# nothing anywhere is obliged to notice. This is the obligation. check-blueprints.yml's shape, with
+# one difference that matters: that roster lives in another repository, so a clock is all it has.
+# This one is local, so a push catches an edited manifest on the branch that edited it — and the
+# clock is left to catch the two things a push cannot see, which are the key rotating over in
+# mixengine and a document that drifted because nobody dispatched a run.
+#
+# It reports; it does not publish. Cutting the registry again is a person's decision, as is doing
+# nothing about it when the roster is ahead of a release on purpose.
+on:
+  schedule:
+    # Wednesday morning UTC, a day off check-blueprints' Tuesday and two off check-eol's Monday, so
+    # three unrelated failures never arrive together and get read as one.
+    - cron: '41 6 * * 3'
+  workflow_dispatch:
+  # The three paths in this repository that can change the answer.
+  push:
+    paths:
+      - 'data/extensions/**'
+      - 'minisign.pub'
+      - '.github/workflows/check-extensions.yml'
+
+env:
+  PUBLISHED: https://github.com/${{ github.repository }}/releases/download/index/extensions.json
+  MANIFESTS: data/extensions
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: mixnz/mixengine
+          ref: master
+          path: mixengine
+
+      - name: install the pinned toolchain
+        working-directory: mixengine
+        run: |
+          rustup toolchain install --no-self-update
+          rustup show active-toolchain
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: mixengine
+          key: extensions
+
+      # The key half of the question, and the reason this job builds Rust at all: is the key this
+      # repository signs with still the constant mixengine master checks against? `assemble` proves
+      # that before it reads a manifest, so a red run here is the answer — and rotating the index key
+      # is an application release, so the MixEngine carrying the new one goes out first.
+      - name: generate against mixengine master
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cargo run --manifest-path mixengine/Cargo.toml --locked \
+            -p mixengine-core --example extensions_json -- \
+            --manifests "$MANIFESTS" \
+            --pub minisign.pub \
+            --generated-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --out dist/extensions.json
+
+      # `generated_at` differs on every run by design — it is what makes a rollback detectable — so
+      # comparing whole documents would report staleness that is not there. The roster is the claim.
+      - name: compare the roster with what is published
+        run: |
+          set -euo pipefail
+          if ! curl -fsSL "$PUBLISHED" -o published.json; then
+            echo "::error::$PUBLISHED could not be read. Has the registry ever been published?"
+            echo "::error::Cut it with release/publish-extensions.sh"
+            exit 1
+          fi
+          jq -S '.extensions' dist/extensions.json > roster.json
+          jq -S '.extensions' published.json > served.json
+          if ! diff -u served.json roster.json; then
+            echo "::error::What is published is not what data/extensions/ holds."
+            echo "::error::Cut it again with release/publish-extensions.sh"
+            exit 1
+          fi
+          echo "the published registry is the roster this repository holds"

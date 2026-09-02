@@ -2629,6 +2629,50 @@ verifies that. `check-blueprints.yml` says weekly whether the published set is s
 decision, asserted by its own tests; a copy kept in this repository would be a copy to keep in step
 by hand, and the weekly check is what makes a deliberate addition or removal visible anyway.
 
+### [x] P16 — Publish the extension registry, and hold the key rather than scrape it
+
+MixEngine's T81 built everything that *reads* `extensions.json` — the signed fetch, the cache, the
+rollback refusal, the per-entry skip — and verified it against a key its own tests mint, which is
+what proves the verification path rather than switching it off. Nothing produced the document, so
+`mix extension available` asked a URL that answered 404. MixEngine's T81a asked for the other half
+and this is it: `extensions.json` with a `.minisig` beside it, on the moved `index` tag, signed with
+the **index key**. No third key — an extension is a binary downloaded and supervised, which is the
+package index's blast radius exactly, so a key of its own would separate nothing and add a third
+rotation to get half-finished.
+
+**The roster lives here, and that is the whole difference from P15.** The blueprint gallery is
+compiled into MixEngine, so publishing a copy would have made two galleries and the workflow reads
+them out of a checkout instead. Nothing of the sort is compiled in for extensions: no manifest ships
+in that binary, `manifest::read` is a *format* rather than a roster, and what an entry describes is a
+third-party artifact at a URL with a SHA-256 — which is what this repository already exists to
+describe. So `data/extensions/<id>.toml` is ours, and a Mailpit version bump is a file here rather
+than an application release.
+
+**Held rather than scraped.** `tools/blueprints.py` pulls `PUBLIC_KEY` out of `trust.rs` with a
+regex, and pays for it with a failure mode — *did it move?* — that exists only because a Python
+script cannot hold a Rust constant. There is no Python here. The generator is
+`mixengine-core`'s `extensions_json` example, built out of the checkout being published, so the
+constant it compares `minisign.pub` against **is** the constant that build checks with: nothing to
+scrape, and no branch for the scrape failing. P15's best step with its moving part removed.
+
+**And no second reader.** Every file goes through the same `manifest::read` a `--path` install calls
+and is written with the same `manifest::to_value` MixEngine's own column stores, so a published entry
+and a local file are one parse. One rule is added that the reader cannot have, because it sees one
+file and not the directory around it: a file's stem must be the id it declares — which is also what
+makes a repeated id impossible, since a directory holds one `mailpit.toml`. The generator then reads
+its own output back and refuses to hand over a document holding an entry it cannot itself read.
+
+**The empty document is published rather than held back.** There is no extension yet; the first three
+are MixEngine's T82. A dry run rehearses everything except the four things that actually break — the
+secret, the tag, the asset URL, and the download-and-verify — so they are exercised now, while the
+cost of getting them wrong is nothing, and `mix extension available` answers *"no extensions"* from
+the first run instead of an index error. `check-extensions.yml` says whether what is published is
+still the roster: on a **push** to `data/extensions/**` rather than only on a clock, because unlike
+the gallery this input is local and a stale document can be caught on the branch that caused it. The
+clock is left for the two things a push cannot see — the key rotating over in `mixengine`, and a
+document that drifted because nobody dispatched a run — on Wednesday, a day off `check-blueprints`'
+Tuesday and two off `check-eol`'s Monday.
+
 ---
 
 ## Working on this file
