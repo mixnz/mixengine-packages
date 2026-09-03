@@ -17,10 +17,21 @@ rules here to drift from it. The same build holds the key constant, so a
 `minisign.pub` that is no longer the one MixEngine checks against fails the run
 before a manifest is opened.
 
-**The three that are here** arrived with MixEngine's task T82: Mailpit `1.31.0`,
+**The three that arrived with MixEngine's task T82** are Mailpit `1.31.0`,
 phpMyAdmin `5.2.3` and Adminer `6.0.1`. Each names an upstream artifact by URL,
 SHA-256 and size — none of these files is a mirror, and this repository publishes
 none of their bytes.
+
+**MixDB `0.0.28` is the fourth, and it names no artifact at all** — MixEngine's
+task T84. A `desktop-app` is an application MixEngine *finds* on the machine and
+hands a connection to; it never downloads or runs an installer, because MixDB
+publishes installers rather than archives, because running one would be arbitrary
+code, and because MixDB updates itself and MixEngine would only ever be a second,
+later updater. So that entry carries `[desktop-app].scheme`, the per-OS
+`[desktop-app.detect]` hints, and `homepage` — where to get it. What goes stale in
+it is the version and the hints, and neither breaks anything while it is late:
+`extension.plan` answers the machine separately, so the version there is read as
+the entry's.
 
 **A version here is upstream's, and this file is what goes stale.** Raising one
 means a new `url`, a new `sha256` and a new `size`, and for phpMyAdmin also
