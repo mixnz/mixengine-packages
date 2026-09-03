@@ -17,10 +17,19 @@ rules here to drift from it. The same build holds the key constant, so a
 `minisign.pub` that is no longer the one MixEngine checks against fails the run
 before a manifest is opened.
 
-There is no manifest here yet. The first three — Mailpit, phpMyAdmin and Adminer
-— are MixEngine's task T82, and one of them needs T81b before it can be served at
-all. Until then the published document is
-`{"schema": 1, "generated_at": …, "extensions": []}`, which is an answer rather
-than a 404.
+**The three that are here** arrived with MixEngine's task T82: Mailpit `1.31.0`,
+phpMyAdmin `5.2.3` and Adminer `6.0.1`. Each names an upstream artifact by URL,
+SHA-256 and size — none of these files is a mirror, and this repository publishes
+none of their bytes.
 
-Adding one is a file here and a run of `release/publish-extensions.sh`.
+**A version here is upstream's, and this file is what goes stale.** Raising one
+means a new `url`, a new `sha256` and a new `size`, and for phpMyAdmin also
+`[web-app].root`, which is the directory its archive unpacks to — the version is
+in the name. Adminer's generated `index.php` includes its artifact by file name
+for the same reason, so both halves move together. The manifests in
+`mixnz/mixengine`'s `crates/mixengine-testkit/fixtures/extensions/` are the same
+files, and a change here belongs in both.
+
+Adding or raising one is a file here and a run of
+`release/publish-extensions.sh`. `check-extensions.yml` is what notices when the
+published document stops matching this directory.
