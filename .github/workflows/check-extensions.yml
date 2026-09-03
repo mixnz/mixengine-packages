@@ -3,9 +3,12 @@ name: check extensions
 # After T81a, a manifest added to data/extensions/ leaves the published document quietly stale, and
 # nothing anywhere is obliged to notice. This is the obligation. check-blueprints.yml's shape, with
 # one difference that matters: that roster lives in another repository, so a clock is all it has.
-# This one is local, so a push catches an edited manifest on the branch that edited it — and the
-# clock is left to catch the two things a push cannot see, which are the key rotating over in
-# mixengine and a document that drifted because nobody dispatched a run.
+# This one is local, and a local roster is why the two halves of the question have to be asked
+# differently. Whether the manifests still read and whether minisign.pub is still the key mixengine
+# compiles in are properties of this tree, so a push settles them. Whether the published document is
+# still the roster is a property of the world, and a push is the one moment it has no useful answer:
+# the event is a manifest changing, and a manifest changing is what puts the roster ahead in the
+# first place. So a push proves the tree and reports the drift; the clock is what fails on it.
 #
 # It reports; it does not publish. Cutting the registry again is a person's decision, as is doing
 # nothing about it when the roster is ahead of a release on purpose.
@@ -65,7 +68,21 @@ jobs:
 
       # `generated_at` differs on every run by design — it is what makes a rollback detectable — so
       # comparing whole documents would report staleness that is not there. The roster is the claim.
+      #
+      # A push reports the drift and does not fail on it, for the reason at the top of this file: on
+      # a push the drift is the state every manifest change passes through on its way to
+      # release/publish-extensions.sh, not a fault. Asked by the clock or by hand, when nothing here
+      # just moved, the same drift means somebody forgot, and that is a failure.
+      #
+      # A push failed on it until T82a, and it looked like it worked, because T82 added three
+      # manifests and went green. What made it green was the runner queue holding both jobs for
+      # seventeen minutes — past the publish that followed the merge. T82a's identical change went
+      # red on a queue that happened to be empty. A step a queue can decide is not checking anything,
+      # and this is the half that was never a property of the tree it ran on.
       - name: compare the roster with what is published
+        id: compare
+        env:
+          STRICT: ${{ github.event_name != 'push' }}
         run: |
           set -euo pipefail
           if ! curl -fsSL "$PUBLISHED" -o published.json; then
@@ -75,9 +92,40 @@ jobs:
           fi
           jq -S '.extensions' dist/extensions.json > roster.json
           jq -S '.extensions' published.json > served.json
-          if ! diff -u served.json roster.json; then
+          if diff -u served.json roster.json > drift.diff; then
+            echo "the published registry is the roster this repository holds"
+            exit 0
+          fi
+          cat drift.diff
+          if [ "$STRICT" = true ]; then
             echo "::error::What is published is not what data/extensions/ holds."
             echo "::error::Cut it again with release/publish-extensions.sh"
             exit 1
           fi
-          echo "the published registry is the roster this repository holds"
+          echo "::notice::The roster is ahead of the published registry, which is what a manifest change looks like. Cut it with release/publish-extensions.sh"
+
+      # check-blueprints.yml's step and its reason: "the build is broken" and "what people can
+      # download is not what this repository holds" read very differently to whoever opens the run.
+      # `always()` here and `failure()` there, because on a push the drift is a notice, and a notice
+      # nobody is shown is not a reminder — the empty file is what says there is nothing to report.
+      - name: say what to do about it
+        if: always() && steps.compare.outcome != 'skipped'
+        run: |
+          set -euo pipefail
+          [ -s drift.diff ] || exit 0
+          {
+            echo '## The published registry is not what data/extensions/ holds'
+            echo
+            echo 'Cut it again:'
+            echo
+            echo '```'
+            echo 'release/publish-extensions.sh'
+            echo '```'
+            echo
+            echo '<details><summary>what the check saw</summary>'
+            echo
+            echo '```diff'
+            tail -c 60000 drift.diff || true
+            echo '```'
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
