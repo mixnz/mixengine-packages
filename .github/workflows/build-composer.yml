@@ -43,7 +43,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
+      # Not on macOS Intel: `setup-php` has no bottle for it and spends twenty-seven minutes
+      # failing to build one, while the `macos-15` Intel image already ships a PHP (8.5 at the time
+      # of writing) that runs a phar as well as any other. The recipe prints which PHP proved it.
       - uses: shivammathur/setup-php@v2
+        if: ${{ !(matrix.os == 'macos' && matrix.arch == 'x86_64') }}
         with:
           php-version: '8.3'
           tools: none
