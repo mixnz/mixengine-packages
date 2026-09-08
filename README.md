@@ -104,6 +104,17 @@ absence.
 Windows borrows RubyInstaller, whose first ARM64 archive is in the 3.4 line; the four Unix cells are
 compiled here, because no publisher offers a relocatable Ruby for them.
 
+### [Composer](docs/packages/composer.md)
+
+| Version | macOS aarch64 | macOS x86_64 | Linux x86_64 | Linux aarch64 | Windows x86_64 | Windows aarch64 |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **2.2** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **2.10** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+One file for every cell — `composer.phar`, run by whichever PHP MixEngine resolves — packed six
+times because the index has no cell for a file that runs everywhere; the page says why that is
+cheaper than a schema change.
+
 ### [Caddy](docs/packages/caddy.md)
 
 | Version | macOS aarch64 | macOS x86_64 | Linux x86_64 | Linux aarch64 | Windows x86_64 | Windows aarch64 |

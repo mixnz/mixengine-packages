@@ -27,6 +27,9 @@ python3 tools/ruby_unix.py --version 3.4 --out dist/
 # Caddy: one recipe for every target, and it runs the server it packed before publishing it
 python tools/caddy.py --version 2 --out dist/
 
+# Composer: one recipe, one file, six archives of one payload; needs a php on the PATH to prove it runs
+python tools/composer.py --version 2 --out dist/
+
 # MariaDB: three recipes, chosen by what upstream publishes for the cell being packed
 python tools/mariadb.py --version 11.8 --out dist/        # Windows x86_64, Linux x86_64
 python3 tools/mariadb_deb.py --version 11.8 --out dist/   # Linux aarch64, out of upstream's .deb
@@ -66,7 +69,7 @@ python tools/permanence.py --slices 1    # hash all of it, which is a six-gigaby
 ```
 
 In practice none of that is run by hand: `.github/workflows/build-php.yml` takes a version, picks the
-recipe from it and produces every target; `build-node.yml`, `build-python.yml`, `build-caddy.yml`,
+recipe from it and produces every target; `build-node.yml`, `build-python.yml`, `build-caddy.yml`, `build-composer.yml`,
 `build-redis.yml`, `build-memcached.yml` and `build-nginx.yml` do the same with one recipe and six;
 `build-ruby.yml` runs six legs across two recipes; and `publish-index.yml` regenerates and signs the
 index from every release that exists. Two run on a clock rather than on a request — `check-eol.yml`

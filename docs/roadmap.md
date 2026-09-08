@@ -2178,6 +2178,16 @@ a row in `release/build.sh`'s table, because the input name is not the same on e
 
 ---
 
+## The tools
+
+### [x] P17 — Composer, a phar published like a runtime
+
+MixEngine's T27c makes Composer a runtime kind, which means an index entry per cell for a file that
+has no cell. Six archives of one payload rather than a schema change, a second publisher's SHA-256
+rather than a keyserver, and `php composer.phar --version` under `setup-php`'s PHP as the proof.
+Two lines published: `2.2` for a PHP older than 7.2.5, and `2` for everything newer. See
+[packages/composer.md](packages/composer.md).
+
 ## The index
 
 ### [x] P10 — End-of-life dates for every kind, not only MariaDB

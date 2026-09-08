@@ -1,0 +1,115 @@
+name: build composer
+
+# Asked for, never automatic — the same rule every other workflow here keeps, for the same reason:
+# upstream releases on its own schedule and a human decides which version is wanted.
+#
+# **One job for six targets, and no `plan` step**, as with Caddy: Composer is one file borrowed
+# everywhere, and the per-target difference is nothing but the archive format `tools/composer.py`
+# picks from the machine it is running on. Six legs pack six identical payloads, because the index
+# has no cell for a file that runs everywhere — see docs/packages/composer.md.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Composer line (2 or 2.2), exact version (2.10.3), or 'latest'. 2.x only."
+        required: true
+        type: string
+      release:
+        description: 'Publish as a GitHub release. Off means build and keep the artifacts for inspection only.'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  pack:
+    # Every leg runs on the operating system and architecture it packs for, on the rule every recipe
+    # here keeps: the runner is the proof. For a phar the proof is the PHP that runs it, so each leg
+    # is given one by `setup-php` rather than trusting whichever PHP the image happens to carry.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: windows-2022,     os: windows, arch: x86_64 }
+          - { runner: windows-11-arm,   os: windows, arch: aarch64 }
+          - { runner: macos-14,         os: macos,   arch: aarch64 }
+          - { runner: macos-15-intel,   os: macos,   arch: x86_64 }
+          - { runner: ubuntu-24.04,     os: linux,   arch: x86_64 }
+          - { runner: ubuntu-24.04-arm, os: linux,   arch: aarch64 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: none
+      - name: borrow and repack
+        id: pack
+        # bash on every leg, Windows included, so the exit code is read the same way everywhere
+        # rather than in two dialects that could disagree.
+        #
+        # 75 is "upstream publishes nothing for this request" — an empty cell of the table and not
+        # a failure. Every other non-zero code is real and is passed on. `|| code=$?` rather than
+        # reading `$?` on the next line, because `shell: bash` runs with `-e`.
+        #
+        # GH_TOKEN because the recipe resolves a version against the GitHub releases API, and
+        # unauthenticated requests are limited to sixty an hour *per IP address* — which runners
+        # share.
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          code=0
+          python -u tools/composer.py --version "${{ inputs.version }}" --out dist || code=$?
+          if [ "$code" -eq 75 ]; then
+            echo "::notice::no upstream Composer ${{ inputs.version }}; nothing to pack"
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          exit "$code"
+        timeout-minutes: 20
+      - uses: actions/upload-artifact@v4
+        if: steps.pack.outputs.skipped != 'true'
+        with:
+          name: composer-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    # One release per exact version, holding every artifact of it — the version read back out of
+    # each manifest rather than taken from the input, because the input may be a line or `latest`
+    # and each leg resolves it against upstream independently.
+    needs: pack
+    if: ${{ inputs.release && !failure() && !cancelled() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: incoming, merge-multiple: true }
+      - name: publish one release per version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          versions=$(jq -r '.version' incoming/*.json | sort -u)
+          for version in $versions; do
+            tag="composer-$version"
+            assets=()
+            for manifest in incoming/*.json; do
+              [ "$(jq -r '.version' "$manifest")" = "$version" ] || continue
+              # Both halves: the manifest is what the index generator reads, so a release holding
+              # only the archive is one the index cannot be rebuilt from.
+              assets+=("${manifest%.json}" "$manifest")
+            done
+            echo "== $tag: ${#assets[@]} artifact(s)"
+            if ! gh release view "$tag" >/dev/null 2>&1; then
+              gh release create "$tag" \
+                --title "Composer $version" \
+                --notes "composer.phar $version for MixEngine, borrowed from composer/composer and checked against getcomposer.org's SHA-256. Six identical archives, one per target, because the index has no cell for a file that runs everywhere. Each was run with \`php composer.phar --version\` from a directory it had been moved to before being published — see mixengine-artifact.json inside each one for what was proven."
+            fi
+            gh release upload "$tag" "${assets[@]}" --clobber
+          done
