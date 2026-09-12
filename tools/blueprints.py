@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The gallery this repository signs, and the checks that have to hold before it does.
 
-MixEngine's six blueprints are compiled into that binary and trusted there without a signature — one
+MixEngine's gallery is compiled into that binary and trusted there without a signature — one
 travelling inside the binary that holds the key would prove nothing the binary has not proved
 already. What this repository publishes is the *other* channel: the same manifests as files, each
 with a detached minisign signature, so a blueprint downloaded by hand lands trusted rather than
