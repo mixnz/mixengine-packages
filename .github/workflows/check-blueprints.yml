@@ -1,8 +1,11 @@
 name: check blueprints
 
 # After T79a, a manifest edited in mixengine leaves the file published here quietly stale, and
-# nothing anywhere is obliged to notice. This is the obligation. check-eol.yml's shape and its
-# reason: a claim that can rot while nobody touches anything needs a clock, not a build step.
+# nothing anywhere is obliged to notice. This is the obligation. It began as check-eol.yml's shape
+# and its reason — a claim that can rot while nobody touches anything needs a clock, not a build step
+# — and P15a gave it the trigger the clock was standing in for: mixengine's `gallery.yml` fires a
+# `repository_dispatch` on the push that changed the gallery, so the report arrives with the change.
+# The clock is what still covers a dispatch that was never sent.
 #
 # It reports; it does not publish. Cutting the gallery again names a ref, and that is a person's
 # decision — as is doing nothing about it, when master is ahead of a release on purpose.
@@ -12,6 +15,18 @@ on:
     # together and get read as one.
     - cron: '41 6 * * 2'
   workflow_dispatch:
+  # mixengine's `gallery.yml` sends this on any push to its master that touches the gallery or the
+  # key, so the answer arrives with the change instead of on the next Tuesday. That is what
+  # check-extensions.yml already gets from a push: the input becomes local, and a stale document is
+  # caught on the commit that caused it. A dispatch is how an input in another repository becomes
+  # local to this one.
+  #
+  # **The clock above stays.** A dispatch that was never sent — no token, a cancelled run, the
+  # workflow edited away, that repository's Actions disabled — looks exactly like a gallery nobody
+  # touched, and nothing but a clock can tell those two apart. The push is the mechanism; the cron is
+  # still the backstop, and now it almost never fires first.
+  repository_dispatch:
+    types: [gallery-changed]
   # The two paths in this repository that can change the answer.
   push:
     paths:
@@ -28,6 +43,11 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      # **`master`, on a dispatch as much as on the clock.** The payload names the commit that asked,
+      # and checking *that* out would answer a question nobody has: the claim being tested is "what
+      # people can download is what this build ships", and what it ships is whatever master holds
+      # when the run reaches it. A push that landed in between is part of the answer, not a race —
+      # and a gallery edit that was reverted a minute later is correctly green here.
       - uses: actions/checkout@v4
         with:
           repository: mixnz/mixengine
@@ -35,6 +55,23 @@ jobs:
           path: mixengine
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
+
+      # Which is why the commit that asked is recorded rather than used: on a red run it is the one
+      # thing that says whose change this was about.
+      - name: say what asked for this run
+        if: github.event_name == 'repository_dispatch'
+        env:
+          ASKING_SHA: ${{ github.event.client_payload.sha }}
+          COMPARE: ${{ github.event.client_payload.compare }}
+        run: |
+          set -euo pipefail
+          {
+            echo "Asked for by mixnz/mixengine@${ASKING_SHA:-unknown}"
+            # `if` and not `[ ... ] && echo`: under `set -e` a false test is a failed statement, and
+            # the step would die on the one branch where there is simply nothing to print.
+            if [ -n "${COMPARE:-}" ]; then echo "  ${COMPARE}"; fi
+            echo "Compared against mixnz/mixengine@$(git -C mixengine rev-parse HEAD) (master now)."
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: compare what is published with mixengine master
         id: compare

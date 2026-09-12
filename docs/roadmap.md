@@ -2639,6 +2639,33 @@ verifies that. `check-blueprints.yml` says weekly whether the published set is s
 decision, asserted by its own tests; a copy kept in this repository would be a copy to keep in step
 by hand, and the weekly check is what makes a deliberate addition or removal visible anyway.
 
+### [x] P15a — Let the gallery ask for its own check
+
+P15 left the check on a clock, which was the honest answer at the time: the input lives in another
+repository, and nothing here can see a push that happens over there. Eleven blueprints later the cost
+of that showed — a gallery grown from six to eleven was reported on the following Tuesday, in this
+repository's Actions tab, to whoever happened to look. **The rule was already written on the next
+task down.** P16 gave `check-extensions.yml` a push trigger "because unlike the gallery this input is
+local, and a stale document can be caught on the branch that caused it". A `repository_dispatch` is
+how an input in another repository becomes local to this one, and it is the only part that was
+missing: mixengine's `gallery.yml` sends one on any push to its `master` touching the gallery or
+`trust.rs`, and `check-blueprints.yml` gained the trigger to receive it.
+
+**The clock stays**, and this is the part worth keeping straight. A dispatch that was never sent — no
+token, a cancelled run, the workflow edited away, Actions disabled over there — is indistinguishable
+from a gallery nobody touched, and only a clock separates those two. The push became the mechanism;
+the cron went back to being the backstop it was always described as.
+
+**Still `master`, not the commit in the payload.** The claim under test is that what people can
+download is what that build ships, and what it ships is whatever `master` holds when the run reaches
+it. Checking out the asking commit would answer a question nobody has, and would turn a gallery edit
+reverted a minute later into a permanent red. The asking commit is recorded in the run summary
+instead, which is the one thing a red run needs and the ref cannot give.
+
+**Publishing is untouched.** Cutting the release names a ref and prunes what the gallery dropped, and
+`master` being ahead of a published set is a state somebody is allowed to choose. What P15a
+automated is the discovery that it had not been cut, never the cutting.
+
 ### [x] P16 — Publish the extension registry, and hold the key rather than scrape it
 
 MixEngine's T81 built everything that *reads* `extensions.json` — the signed fetch, the cache, the

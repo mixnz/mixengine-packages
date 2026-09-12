@@ -144,7 +144,7 @@ Two things the moved `blueprints` tag forced. `--clobber` overwrites what is upl
 nothing, so a slug the gallery drops would keep a valid signature at a stable URL for good — and
 MixEngine decides trust when a blueprint arrives and never re-examines it, so anything the gallery no
 longer contains is pruned after every upload. And *created* is not *published*: the run downloads
-what it just uploaded and verifies that, which is `check-archive.yml`'s lesson one tag along. `check-blueprints.yml` says weekly whether the published set is still master's.
+what it just uploaded and verifies that, which is `check-archive.yml`'s lesson one tag along. `check-blueprints.yml` says whether the published set is still master's — on the push that changed the gallery, because mixengine's `gallery.yml` dispatches it there, and weekly anyway for the dispatch that was never sent.
 
 A blueprint with no signature is still importable — it is marked untrusted, for good, and its command
 needs `mix blueprint apply --run-untrusted-scaffold` before it will run.
