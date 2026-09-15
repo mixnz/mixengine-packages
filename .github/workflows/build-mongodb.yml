@@ -34,6 +34,14 @@ jobs:
     # DT_NEEDED out of the mongod it just fetched — so the rhel8 candidate is fetched, measured,
     # found to want OpenSSL 1.1.1, and rejected. That is one wasted download per leg and it is what
     # keeps the choice a measurement rather than a table that goes stale.
+    #
+    # **22.04 for Linux, not the runner this file would otherwise reach for**, and it is the same
+    # reason `mariadb_deb.py` states and `build-postgres.yml` keeps: the glibc floor of the finished
+    # artifact is the highest floor of anything in it, and what is in it includes the libraries
+    # `relocate.bundle` copies off the runner. Measured on the first green run, which used 24.04:
+    # `mongod` itself asks for 2.34 and the bundled `libcrypto.so.3`, `libkrb5` and `libldap` ask
+    # for **2.38**, so the artifact refused Debian 12 and RHEL 9 — machines somebody runs a local
+    # development environment on — for libraries nothing about MongoDB required to be that new.
     strategy:
       fail-fast: false
       matrix:
@@ -41,8 +49,8 @@ jobs:
           - { runner: windows-2022,     os: windows, arch: x86_64 }
           - { runner: macos-14,         os: macos,   arch: aarch64 }
           - { runner: macos-15-intel,   os: macos,   arch: x86_64 }
-          - { runner: ubuntu-24.04,     os: linux,   arch: x86_64 }
-          - { runner: ubuntu-24.04-arm, os: linux,   arch: aarch64 }
+          - { runner: ubuntu-22.04,     os: linux,   arch: x86_64 }
+          - { runner: ubuntu-22.04-arm, os: linux,   arch: aarch64 }
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
