@@ -167,6 +167,14 @@ def main() -> None:
 
     target = borrow.host("mongosh")
     suffix = TARGETS[target][1] if target in TARGETS else "tgz"
+
+    # **What upstream packed in is not what this repository packs out.** mongosh publishes its macOS
+    # builds as zips, and reusing that suffix for `borrow.publish` would make them the first macOS
+    # zip in this index — an archive whose executable bit survives only if whatever unpacks it
+    # restores the mode, which is the exact failure `borrow.unpack` had to be fixed for on the way
+    # in. Every other Unix artifact here is a tar, which carries the bit itself.
+    packed_as = "zip" if target[0] == "windows" else "tgz"
+
     version, url = resolve(args.version, target)
     if version != args.version:
         print(f"{args.version} resolved to {version}")
@@ -203,7 +211,7 @@ def main() -> None:
                 print(f"needs {measured[0]} {measured[1]} or newer")
 
         borrow.undebugged(tree)
-        borrow.publish(tree, manifest, args.out, suffix)
+        borrow.publish(tree, manifest, args.out, packed_as)
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
