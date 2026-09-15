@@ -367,6 +367,22 @@ def vcredist(tree: Path) -> str | None:
     return None
 
 
+def terse(refusal: object) -> str:
+    """The durable half of a tool's complaint: what it refused, without where it was standing.
+
+    A published artifact carries its ``keeps`` reasons forever, and the raw refusal names the
+    runner's temporary directory and the Xcode that happened to be installed on it — so two runs of
+    one recipe would write two different sentences about one fact, and a reader comparing them would
+    be looking at noise. What survives is the part that is about the file: ``indirect symbol table
+    entry 12036 (past the end of the symbol table)``.
+    """
+    text = " ".join(str(refusal).split())
+    if "fatal error:" in text:
+        text = text.split("fatal error:", 1)[1]
+    text = text.split(" in: ", 1)[0]
+    return text.strip().rstrip(".")
+
+
 def strip_or_keep(tree: Path, binaries: list[Path],
                   operating_system: str) -> tuple[dict[str, str], dict[str, str]]:
     """Strip each binary, or keep the one the platform's own ``strip`` refuses — and say which.
@@ -422,10 +438,10 @@ def strip_or_keep(tree: Path, binaries: list[Path],
                 ) from refusal
             kept[relative] = (
                 f"its symbol table, because this platform's `strip` refuses the file rather than "
-                f"shrinking it — {refusal}. Upstream's bytes are shipped unchanged; the other "
-                f"cells of this version are stripped."
+                f"shrinking it: {terse(refusal)}. Upstream's bytes are shipped unchanged, and the "
+                f"other cells of this version are stripped."
             )
-            print(f"keeping {relative} as upstream published it: {refusal}")
+            print(f"keeping {relative} as upstream published it — {terse(refusal)}")
         finally:
             spare.unlink(missing_ok=True)
 
