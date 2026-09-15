@@ -10,7 +10,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · **(rule)** = a conforma
 
 ## Where we are
 
-Every row of the runtime table is packed, and every service row that has been evaluated is packed.
+Every row of the runtime table is packed, and every service row that has been evaluated is packed —
+with one exception, and it is new: MongoDB has been evaluated and is not packed, which is P18.
 Every recipe now conforms to the rule and there is a program that says so. What is *not* done is the
 **repack**: the artifacts on the releases page were packed before P2–P5, and `tools/parity.py` names
 every one of those differences on every run. [P6](roadmap-history.md) is what it says and what it
@@ -180,6 +181,33 @@ green on 19" but **"is there a green `REL_19_STABLE` run from an animal that is 
 `master`"** — `hoatzin` picking up the branch, or `unicorn` recovering. If 19 ships and neither has,
 then the first green run of `postgres_build.py` is itself the evidence, and it costs one
 `workflow_dispatch` to find out.
+
+### [ ] P18 — MongoDB, the half of a promise the index already makes
+
+Every PHP this repository publishes carries the `mongodb` extension, on every branch and every cell,
+because [P2](roadmap-history.md) fails a build without it. Nothing here installs a MongoDB for it to
+talk to. This closes that: five LTS lines from 6.0, five cells each, all borrowed — and the sixth is
+upstream's own empty cell, since no MongoDB has ever been built for Windows on ARM.
+
+The evaluation is done and the measurements are in the design; what is left is the recipe. The
+largest single thing it does is subtraction: upstream's Windows zip is 923 MB of which 844 MB is
+debug symbols and 25 MB is a redistributable installer, and what a running process reads is about
+54 MB. It also adds the one field the index cannot currently write — `requires.cpu`, because MongoDB
+refuses to start on an x86_64 without AVX and an artifact that cannot state its own precondition
+hands the user a dead process instead of a sentence.
+
+See [the design](superpowers/specs/2026-09-15-mongodb-packaging-design.md), which carries the cell
+matrix, the Linux build criterion, the licence route and the four things still to be measured.
+
+### [ ] P18a — `mongosh`, because the server stopped carrying a shell
+
+From 6.0 the server tarball ships no shell at all, so a `mongodb` artifact alone leaves
+`mix database open` with nothing to open. `mongosh` is its own release train under its own licence —
+Apache-2.0 against the server's SSPL — which makes it a second kind rather than a second directory
+in the first one. Same five cells, same absent one.
+
+With P18 above, and on the same
+[design](superpowers/specs/2026-09-15-mongodb-packaging-design.md).
 
 ---
 

@@ -249,8 +249,8 @@ index, so that cell is empty.
   promise costs, what GitHub can and cannot enforce, and the signing key.
 - **[Building from source](docs/building-from-source.md)** — ten rounds of CI on PHP's legacy rows,
   and almost none of it about PHP. Read it before opening any **built** cell.
-- **[Roadmap](docs/roadmap.md)** — where the pipeline stands, and what is left. One task, at the
-  time of writing, and it waits on an upstream release.
+- **[Roadmap](docs/roadmap.md)** — where the pipeline stands, and what is left: a PostgreSQL cell
+  waiting on an upstream release, and MongoDB, which is evaluated and not yet packed.
 - **[What each task settled](docs/roadmap-history.md)** — the thirty-two that are closed, kept whole
   and in the order they were written, because what a task found outlasts the fact that it is done.
 
