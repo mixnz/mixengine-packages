@@ -38,6 +38,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import borrow  # noqa: E402  — siblings, and this directory is not importable as a package
+import mongodb_smoke  # noqa: E402
 import relocate  # noqa: E402
 import strip  # noqa: E402
 
@@ -483,6 +484,17 @@ def main() -> None:
                 requires[measured[0]] = measured[1]
                 print(f"needs {measured[0]} {measured[1]} or newer")
         manifest["requires"] = requires
+
+        # Proven from a directory the tree was moved to, never from where it was produced — which is
+        # the difference between an archive that works and an archive that works here.
+        elsewhere = borrow.moved(tree)
+        try:
+            manifest["smoke"] = {
+                "relocated": True,
+                "ran": mongodb_smoke.server(elsewhere, version, manifest["provides"], windows),
+            }
+        finally:
+            borrow.discard(elsewhere)
 
         borrow.undebugged(tree)
         borrow.publish(tree, manifest, args.out, suffix)
