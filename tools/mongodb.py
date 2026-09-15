@@ -27,7 +27,10 @@ Python 3 stdlib only, by policy: this runs on a GitHub runner with nothing insta
 from __future__ import annotations
 
 import json
+import struct
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -59,6 +62,14 @@ ARCH = {
     "linux": {"aarch64": "aarch64", "x86_64": "x86_64"},
 }
 
+# **Community MongoDB is not one edition name, and reading it as one finds nothing.** The catalogue
+# calls the macOS and Windows community builds `base` and the Linux ones `targeted`, because on
+# Linux there is a build per distribution and the word names that rather than the licence. The
+# third spelling, `enterprise`, is a different product under a different licence and is never taken
+# here — it is excluded by naming what *is* wanted rather than by excluding it, which is the
+# difference between a filter that fails closed and one that fails open.
+EDITION = {"macos": "base", "windows": "base", "linux": "targeted"}
+
 # **The floor is this repository's decision and the catalogue cannot make it.** The design this
 # recipe was written from claimed that `production_release` and `lts_release` together select the
 # five lines offered here; measured against `current.json`, they select seven — upstream flags 5.0
@@ -70,6 +81,11 @@ ARCH = {
 # compiling MongoDB on macOS for a line upstream has abandoned there, or publishing two lines that
 # quietly mean less than the five above them.
 FLOOR = (6, 0)
+
+# Upstream's Linux builds, lowest glibc floor first. The order is a preference, not a decision:
+# which one is taken is settled by `needed` below, because the two things that matter — the glibc
+# floor and which OpenSSL the build expects — are properties of the binary rather than of the name.
+LINUX_CANDIDATES = ("rhel8", "rhel90", "rhel93", "rhel10", "ubuntu2004", "ubuntu2204", "ubuntu2404")
 
 
 def catalogue(exact: bool) -> list[dict]:
@@ -102,13 +118,107 @@ def offered(records: list[dict]) -> dict[str, dict]:
     return found
 
 
+def needed(path: Path) -> list[str]:
+    """The ``DT_NEEDED`` sonames of an ELF file, in the order the file lists them.
+
+    Read here rather than through ``relocate.elf_dependencies``, which shells out to ``ldd`` and
+    therefore answers only on Linux. This has to answer on whichever machine is *choosing* the
+    build, and a choice that can only be checked on the platform it is made for is a choice nobody
+    reviews. ``strip.py`` parses ELF the same way and for the same reason.
+    """
+    data = path.read_bytes()
+    if data[:4] != b"\x7fELF" or data[4] != 2:
+        raise SystemExit(f"{path} is not a 64-bit ELF file")
+
+    (section_offset,) = struct.unpack_from("<Q", data, 0x28)
+    entry_size, count, names_index = struct.unpack_from("<HHH", data, 0x3A)
+
+    def section(index: int) -> tuple[int, int, int]:
+        base = section_offset + index * entry_size
+        name, _kind, _flags, _addr, offset, size = struct.unpack_from("<IIQQQQ", data, base)
+        return name, offset, size
+
+    _, names_offset, names_size = section(names_index)
+    names = data[names_offset:names_offset + names_size]
+
+    sections = {}
+    for index in range(count):
+        name, offset, size = section(index)
+        spelling = names[name:names.index(b"\0", name)].decode()
+        sections[spelling] = (offset, size)
+
+    if ".dynamic" not in sections or ".dynstr" not in sections:
+        return []
+    dynamic_offset, dynamic_size = sections[".dynamic"]
+    strings_offset, strings_size = sections[".dynstr"]
+    strings = data[strings_offset:strings_offset + strings_size]
+
+    sonames = []
+    for position in range(dynamic_offset, dynamic_offset + dynamic_size, 16):
+        tag, value = struct.unpack_from("<Qq", data, position)
+        if tag == 0:                       # DT_NULL
+            break
+        if tag == 1:                       # DT_NEEDED
+            sonames.append(strings[value:strings.index(b"\0", value)].decode())
+    return sonames
+
+
+def linux_download(record: dict, arch: str, work: Path) -> tuple[dict, Path, Path]:
+    """The Linux build this cell takes, chosen by reading the binaries rather than the names.
+
+    Tries the candidates in order and stops at the first whose ``mongod`` does not name an OpenSSL
+    1.1 soname. OpenSSL 1.1.1 has been unpatched since September 2023, and two glibc versions of
+    reach are not what this repository trades a TLS library's security support for.
+
+    The loop prints what it rejected, so a green run says why it took what it took.
+    """
+    attempted = []
+    for candidate in LINUX_CANDIDATES:
+        download = next(
+            (d for d in record["downloads"]
+             if d.get("edition") == EDITION["linux"] and d.get("target") == candidate
+             and d.get("arch") == arch),
+            None,
+        )
+        if download is None:
+            attempted.append(f"{candidate}: upstream built none")
+            continue
+
+        url = download["archive"]["url"]
+        print(f"trying {url}")
+        archive = work / url.rsplit("/", 1)[-1]
+        try:
+            urllib.request.urlretrieve(url, archive)
+        except urllib.error.HTTPError as error:
+            raise SystemExit(f"{url} answered {error.code}") from error
+
+        tree = borrow.unpack(archive, work / f"unpacked-{candidate}", "tgz")
+        sonames = needed(tree / "bin" / "mongod")
+        stale = [name for name in sonames if name.endswith(".so.1.1")]
+        if not stale:
+            print(f"{candidate}: {', '.join(sonames)}")
+            return download, archive, tree
+        attempted.append(f"{candidate}: wants {', '.join(stale)}")
+        print(f"{candidate} rejected — {', '.join(stale)} is OpenSSL 1.1.1, unpatched since 2023")
+
+    raise SystemExit(
+        f"no Linux build of MongoDB {record['version']} for {arch} links OpenSSL 3: "
+        + "; ".join(attempted)
+    )
+
+
 def download_for(record: dict, target: tuple[str, str]) -> dict | None:
-    """The ``base`` edition download for this cell, or None where upstream built none."""
+    """The community download for this cell, or None where upstream built none.
+
+    Linux never comes through here — its target is chosen by `linux_download`, which has several
+    candidates to weigh and a binary to read before it can say which. This answers for the two
+    platforms upstream builds exactly once.
+    """
     _, arch = target
     upstream_target, _suffix = TARGETS[target]
     want = ARCH[upstream_target][arch]
     for download in record["downloads"]:
-        if download.get("edition") != "base":
+        if download.get("edition") != EDITION[upstream_target]:
             continue
         if download.get("target") != upstream_target or download.get("arch") != want:
             continue
