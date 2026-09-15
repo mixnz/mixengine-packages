@@ -88,8 +88,18 @@ def hello(port: int, seconds: float = 90) -> int:
     raise SystemExit(f"mongod never answered a hello on 127.0.0.1:{port}: {last}")
 
 
-def server(tree: Path, version: str, provides: dict[str, str], windows: bool) -> list[str]:
-    """Run the four things MixEngine will do, and answer with the commands that were run."""
+def server(tree: Path, version: str, provides: dict[str, str],
+           operating_system: str) -> list[str]:
+    """Run the four things MixEngine will do, and answer with the commands that were run.
+
+    **Stopping it is the step that is not the same sentence on three systems**, and this took a CI
+    run to get right. ``mongod --shutdown`` reads the lock file in the data directory and stops the
+    server that wrote it, and it exists **on Linux only** — upstream's documentation says so and
+    the macOS builds agree by answering 2. The first version of this asked "is this Windows", which
+    is the wrong question and passed anyway on the one platform it was written on. So the
+    administrative path is Linux's, and macOS and Windows are stopped by signal; which was used is
+    recorded rather than assumed, because MixEngine's own recipe faces exactly this split.
+    """
     mongod = tree / provides["mongod"]
     data = tree.parent / "smoke-dbpath"
     data.mkdir(parents=True, exist_ok=True)
@@ -103,7 +113,7 @@ def server(tree: Path, version: str, provides: dict[str, str], windows: bool) ->
         "--bind_ip", "127.0.0.1",
         "--logpath", str(log),
     ]
-    if not windows:
+    if operating_system != "windows":
         # Nothing here connects over one, and a socket left in /tmp outlives the test.
         command.append("--nounixsocket")
 
@@ -113,16 +123,14 @@ def server(tree: Path, version: str, provides: dict[str, str], windows: bool) ->
         answered = hello(port)
         ran.append(f"hello on 127.0.0.1:{port} answered {answered} bytes")
 
-        if windows:
-            # There is no `mongod --shutdown` on Windows — upstream's build refuses the option — so
-            # the administrative path and the signal path are not the same sentence on the two
-            # systems, and saying which was used is the point of recording what ran.
-            process.terminate()
-            ran.append("terminate() — mongod --shutdown is not offered on Windows")
-        else:
+        if operating_system == "linux":
             shutdown = [str(mongod), "--dbpath", str(data), "--shutdown"]
             subprocess.run(shutdown, check=True, capture_output=True, timeout=120)
             ran.append(" ".join(shutdown))
+        else:
+            process.terminate()
+            ran.append(f"terminate() — mongod --shutdown is offered on Linux only, and "
+                       f"{operating_system} answers 2 to it")
 
         process.wait(timeout=120)
     finally:

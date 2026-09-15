@@ -275,8 +275,17 @@ def refuse(spec: str, lines: dict[str, dict]) -> None:
     )
 
 
-def resolve(spec: str, target: tuple[str, str]) -> tuple[str, dict]:
-    """Turn ``8.3``, ``8.3.11`` or ``latest`` into one published archive for this cell."""
+def resolve(spec: str, target: tuple[str, str]) -> tuple[str, dict | None]:
+    """Turn ``8.3``, ``8.3.11`` or ``latest`` into one published archive for this cell.
+
+    The download comes back as ``None`` on Linux, where there is not one archive to name: upstream
+    builds per distribution and :func:`linux_download` chooses between them by reading binaries it
+    has to fetch first. **This is what the first CI run found.** ``download_for`` looked for a
+    download whose ``target`` is ``"linux"``, upstream publishes no such thing — the field holds
+    ``rhel8`` or ``ubuntu2204`` — so every Linux leg reported an empty cell five seconds in and
+    exited 75, which is the answer for a cell upstream never built rather than for one this function
+    was looking up wrong.
+    """
     if target not in TARGETS:
         borrow.unavailable(
             f"MongoDB has never been built for {target[0]}/{target[1]} — no version of it, "
@@ -303,6 +312,9 @@ def resolve(spec: str, target: tuple[str, str]) -> tuple[str, dict]:
             raise SystemExit(f"upstream lists no production release {spec}")
     else:
         refuse(spec, lines)
+
+    if target[0] == "linux":
+        return record["version"], None
 
     download = download_for(record, target)
     if download is None:
@@ -491,7 +503,9 @@ def main() -> None:
         try:
             manifest["smoke"] = {
                 "relocated": True,
-                "ran": mongodb_smoke.server(elsewhere, version, manifest["provides"], windows),
+                "ran": mongodb_smoke.server(
+                    elsewhere, version, manifest["provides"], operating_system
+                ),
             }
         finally:
             borrow.discard(elsewhere)
