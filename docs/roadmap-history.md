@@ -2112,6 +2112,48 @@ run the new ones — the argument PHP 7.0 is offered under, arrived at from the 
 See [the design](superpowers/specs/2026-09-15-mongodb-packaging-design.md) and
 [packages/mongodb.md](packages/mongodb.md).
 
+### [x] P18a — `mongosh`, and the requirement a smoke test could not see
+
+From 6.0 the MongoDB server archive ships no shell at all, so the row P18 published left
+`mix database open` with nothing to open. `mongosh` is its own release train under its own licence —
+Apache-2.0 against the server's SSPL v1 — which makes it a second kind rather than a second directory
+inside the first, for the reason P17 made Composer one. **2.11.1 is published on all five cells**,
+and the index it went into describes 68 packages and 360 artifacts.
+
+It was P12's shape at one row, and it closed the way that task's did: the gap between a green recipe
+and a published artifact is not where the interesting defects are, and the one this row found was on
+the other side of it.
+
+**The Windows cell was published stating no requirement at all, and the artifact was not asked.**
+`mongosh.py` measured a floor on its two Unix branches and Windows fell through the `if`. Reading the
+published archive back — on a Windows machine, with the repository's own `relocate.pe_imports` —
+`bin/mongosh.exe` imports no Visual C++ runtime, because upstream links it against the static CRT,
+and `bin/mongosh_crypt_v1.dll` beside it imports all four of the 2015-2022 family. **Nothing loads
+that library until in-use encryption is configured.** So the shell starts, `mongosh --version`
+answers, and `smoke` records a pass on a machine where the artifact is incomplete — which is the
+whole lesson: a smoke test proves what it ran, and the thing it cannot cover is the thing nothing
+runs until someone needs it.
+
+Two things came out of the repair, and the second is the one that generalises:
+
+- **The sidecar manifest was corrected and the index re-signed; the archive was not touched** —
+  64,389,957 bytes and `cb181377…` before and after. The copy of the manifest *inside* that archive
+  still says nothing and stays that way, because correcting it means uploading a different file under
+  a published name, which [the archive](the-archive.md) names as the second-most-likely accident
+  after deletion and runs a weekly job to catch. Rebuilding it locally produced 64,353,543 bytes from
+  the same recipe and the same upstream asset, which is that document's argument measured rather than
+  quoted.
+- **`vcredist` now reads every binary in the tree**, not the one named in `provides` — for the server
+  too, where it changes nothing because `mongod.exe` imports the family directly. The two halves of
+  the row share one function rather than one rule written twice.
+
+What is not done is [P18b](roadmap.md): MixEngine still has no notion that a server and a shell are
+installed as a pair. That was named here as a decision to make *before* publishing, and publishing
+happened first — the shell is useful to anyone who asks for it by name, and the pairing is the other
+repository's work either way.
+
+See [packages/mongodb.md](packages/mongodb.md#the-shell-is-a-different-package).
+
 ---
 
 ## The tools

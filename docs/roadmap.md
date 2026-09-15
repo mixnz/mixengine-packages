@@ -108,6 +108,7 @@ the fact that it is finished; this is the index into it, in the order the tasks 
 | **P9** | nginx: borrowed on Windows, and `nginx -V` there is the specification the other four cells are compiled against. |
 | **P14** | MySQL: five lines, and eight cells compiled here because Oracle withdrew macOS while those lines were still alive. |
 | **P18** | MongoDB: five LTS lines borrowed from 6.0, a Windows zip that was 91% debug symbols, and seven things only CI could find. |
+| **P18a** | `mongosh` published, and a requirement no smoke test could see — the library nothing loads until someone needs it. |
 
 **The tools**
 
@@ -182,25 +183,28 @@ green on 19" but **"is there a green `REL_19_STABLE` run from an animal that is 
 then the first green run of `postgres_build.py` is itself the evidence, and it costs one
 `workflow_dispatch` to find out.
 
-### [ ] P18a — `mongosh` exists as a recipe and not as an artifact
+### [ ] P18b — Nothing says a server and a shell are installed as a pair
 
-From 6.0 the MongoDB server archive ships no shell at all, so the row [P18](roadmap-history.md)
-published leaves `mix database open` with nothing to open. `mongosh` is its own release train under
-its own licence — Apache-2.0 against the server's SSPL v1 — which makes it a second kind rather than
-a second directory inside the first, for the reason [P17](roadmap-history.md) made Composer one:
-two products under one version number cannot answer whose version it is.
+Both halves are published — [P18](roadmap-history.md) is the server on five lines, and
+[P18a](roadmap-history.md) is `mongosh` 2.11.1 — and **neither archive mentions the other**. A
+MongoDB artifact carries no shell and says nothing about where one comes from; the shell says nothing
+about which server lines it speaks to. So `mix database open` on a MongoDB works only if a `mongosh`
+happens to have been installed too, and nothing on either side arranges that.
 
-**`tools/mongosh.py` and `.github/workflows/build-mongosh.yml` are written and green on all five
-cells**, measured the same way the server's were — 2.11.1, `bin/mongosh` proven from a directory the
-tree was moved to, `parity.py` clean. Nothing is published, and that is the whole of what is left.
+This was named as a decision to make *before* publishing and it was not made; the shell was published
+anyway, because it is useful to anyone who asks for it by name and the alternative was holding a
+finished artifact for a decision in another repository. That is the whole of the debt: a pairing that
+is obvious to a reader and invisible to the daemon.
 
-It is [P12](roadmap-history.md)'s shape at one row rather than four, and it is named here rather
-than left implicit for exactly the reason that task existed: a recipe with no release is a gap that
-looks like completion from inside this file.
+**It is not this repository's alone, and possibly not this repository's at all.** The index has no
+notion of one package implying another, and inventing one here — a `companions` field, say — would be
+a schema change every kind pays for to serve one pair. The cheaper shape is MixEngine knowing that
+opening a MongoDB means resolving a `mongosh`, the way it already resolves a PHP to run
+`composer.phar` rather than the phar naming one. That is a question to settle over there before
+anything is added here.
 
-One decision to make before publishing, and it is not this repository's alone: MixEngine has to
-learn that a MongoDB and a `mongosh` are installed as a pair, since neither archive mentions the
-other. See [the design](superpowers/specs/2026-09-15-mongodb-packaging-design.md).
+See [the design](superpowers/specs/2026-09-15-mongodb-packaging-design.md) and
+[packages/mongodb.md](packages/mongodb.md#the-shell-is-a-different-package).
 
 ---
 

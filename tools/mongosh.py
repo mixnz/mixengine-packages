@@ -33,6 +33,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import borrow  # noqa: E402  — siblings, and this directory is not importable as a package
+import mongodb  # noqa: E402  — the server half of this row, for the one rule they must share
 import relocate  # noqa: E402
 import strip  # noqa: E402
 
@@ -204,7 +205,20 @@ def main() -> None:
         # Proven after the strip, because the stripped tree is the one that ships.
         manifest["smoke"] = smoke(tree, version, manifest["provides"])
 
-        if sys.platform != "win32":
+        # **Both halves of this, because the first version published only one.** 2.11.1 went out
+        # stating no requirement on Windows — not because the tree was asked and had nothing to
+        # say, but because nothing here asked: the branch was written for the two Unix answers and
+        # Windows fell through it. `mongosh_crypt_v1.dll` imports the VC++ 2022 runtime, and the
+        # artifact promised a machine that has none of it would do.
+        #
+        # `mongodb.vcredist` rather than a copy of the rule: the server and the shell meet the same
+        # machine, and two spellings of one question are two places for them to drift apart.
+        if sys.platform == "win32":
+            needed = mongodb.vcredist(tree)
+            if needed:
+                manifest["requires"] = {"vcredist": needed}
+                print(f"needs the Visual C++ {needed} redistributable")
+        else:
             measured = relocate.floor(tree)
             if measured:
                 manifest["requires"] = {measured[0]: measured[1]}

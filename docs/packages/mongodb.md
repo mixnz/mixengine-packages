@@ -72,11 +72,13 @@ Three of those removals are worth being precise about, because each is a differe
   build cannot see it. The removal is the recipe's own decision and is declared in
   `upstream.removed` rather than left to be inferred from a size.
 - **`vc_redist.x64.exe` is an installer, and an artifact does not carry one.** The precondition it
-  exists to satisfy becomes `requires.vcredist` instead, measured off `mongod.exe`'s import table —
-  `vcruntime140.dll`, `vcruntime140_1.dll`, `msvcp140.dll`, `msvcp140_1.dll`, which is the 2015-2022
-  family, declared as its newest member because installing that satisfies any of them. Read off the
-  binary for the reason [MySQL's](mysql.md) `msvcr100.dll` had to be: a line's documentation and its
-  binaries disagree, and the binaries are what fails to start.
+  exists to satisfy becomes `requires.vcredist` instead, measured off the import tables of *every
+  binary in the tree* — `vcruntime140.dll`, `vcruntime140_1.dll`, `msvcp140.dll`, `msvcp140_1.dll`,
+  which is the 2015-2022 family, declared as its newest member because installing that satisfies
+  any of them. Read off the binaries for the reason [MySQL's](mysql.md) `msvcr100.dll` had to be: a
+  line's documentation and its binaries disagree, and the binaries are what fails to start. *Every*
+  binary rather than the one in `provides`, because [the shell](#the-shell-is-a-different-package)
+  proved the difference is not theoretical.
 - **`Install-Compass.ps1` downloads a different product.** So does `bin/install_compass` on the
   Unix cells, which is the same file under another name, and both go — which is also what keeps the
   five cells holding the same set of files.
@@ -235,8 +237,44 @@ same five cells and the same absent sixth, and `provides` is `{"mongosh": "bin/m
 
 Its Linux asset is the one with **no OpenSSL suffix**. Upstream publishes three — one per system
 OpenSSL, plus one carrying its own — and the self-contained one costs about 4 MB against `-openssl3`
-and buys an artifact with nothing to bundle and no opinion about the machine it lands on, which is
-the trade the [Python](python.md) row makes for the same reason.
+and buys an artifact with nothing to bundle and no opinion about which OpenSSL the machine has,
+which is the trade the [Python](python.md) row makes for the same reason.
+
+**It asks less of a machine than the server does**, and the two numbers are not interchangeable:
+mongosh needs **glibc 2.27** where the server needs 2.34, and no AVX. A machine can run the shell
+and not the server, so a daemon that installs them as a pair has to read each artifact's `requires`
+rather than the row's.
+
+### What the Windows cell of 2.11.1 got wrong
+
+The first mongosh published — **2.11.1** — stated no requirement at all on Windows. That was not a
+measurement; it was the absence of one. `mongosh.py` asked `relocate.floor` for a floor on the two
+Unix branches and Windows fell through the `if`, and the archive went out promising that a machine
+with no Visual C++ runtime would do.
+
+It will not. `bin/mongosh.exe` genuinely imports none — upstream links it against the static CRT —
+but `bin/mongosh_crypt_v1.dll` beside it imports all four of the 2015-2022 family. Nothing loads
+that library until in-use encryption is configured, so the shell starts, `mongosh --version`
+answers, and the smoke test is satisfied on a machine where the artifact is incomplete.
+
+Three things follow, and the last is the one worth keeping:
+
+- **The sidecar `mongosh-2.11.1-windows-x86_64.zip.json` was corrected in place** and the index
+  re-signed, so what MixEngine reads before it installs anything now states `vcredist: 2022`. The
+  archive was not touched: 64,389,957 bytes and `cb181377…` before and after, which is why
+  `permanence.py` stays quiet and why anyone who pinned that digest is unaffected.
+- **The copy inside the archive still says nothing, and stays that way.** `borrow.publish` writes
+  the manifest twice — beside the archive and into its root — and correcting the second one means
+  repacking and uploading a different file under a published name. That is the accident
+  [the archive](../the-archive.md) names second after deletion and runs a weekly job to catch; it is
+  not worth doing to an artifact whose paths are all correct and whose successor will carry the
+  right answer in both copies. So one archive here holds a manifest quieter than the index that
+  describes it, on purpose, and this paragraph is the record of it.
+- `vcredist` now reads every binary `relocate.machine_files` finds, not the one named in `provides`
+  — for the server too, where it happens to change nothing because `mongod.exe` imports the family
+  directly. **A check that asks only about what a package advertises cannot see what ships beside
+  it**, and the smoke test cannot cover the gap, because the thing it fails to load is the thing
+  nothing loads until someone needs it.
 
 **The server's smoke test does not use it.** `mongodb_smoke.py` speaks an `OP_MSG` carrying
 `{hello: 1}` over a socket instead, in about forty lines of `struct`, because a server test that

@@ -349,19 +349,25 @@ def subtract(tree: Path) -> list[str]:
 
 
 def vcredist(tree: Path) -> str | None:
-    """Which Visual C++ runtime ``mongod.exe`` imports, as the schema spells it.
+    """Which Visual C++ runtime a Windows tree needs, as the schema spells it.
 
     Measured off the import table for the reason ``mysql.py`` gives about ``msvcr100.dll``: a line's
     documentation and its binaries disagree, and the binaries are what fails to start. Every toolset
     from 2015 onwards imports the same ``VCRUNTIME140`` family and their redistributables are
     ABI-compatible, so the newest of that family is what is declared — installing it satisfies any
     of them, and naming an older one would be a claim this recipe cannot check.
+
+    **Every binary in the tree, not the one named in ``provides``, and mongosh is why.** Read off
+    ``mongosh.exe`` alone the answer is None, because upstream links that one against the static
+    CRT. The runtime is imported by ``bin/mongosh_crypt_v1.dll`` beside it, which nothing loads
+    until in-use encryption is configured — so the shell starts, the smoke test passes, and the
+    artifact was published stating no requirement at all. A measurement that reads only what a
+    package *provides* cannot see a sibling library, and this is the set `relocate.floor` has been
+    measuring the Unix floor across all along.
     """
-    binary = tree / LAYOUT["windows"]["mongod"]
-    if not binary.exists():
-        return None
-    imports = sorted({name.lower() for name in relocate.pe_imports(binary)})
-    print(f"mongod.exe imports {', '.join(imports)}")
+    binaries = relocate.machine_files(tree)
+    imports = sorted({name.lower() for path in binaries for name in relocate.pe_imports(path)})
+    print(f"{len(binaries)} binaries import {', '.join(imports)}")
     if any(name.startswith(("vcruntime140", "msvcp140")) for name in imports):
         return "2022"
     return None
