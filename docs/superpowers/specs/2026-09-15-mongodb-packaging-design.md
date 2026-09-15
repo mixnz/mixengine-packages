@@ -35,11 +35,18 @@ Five lines, floor at **6.0**, every cell borrowed:
 | **8.2** | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | **8.3** | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 
-**Which lines those are is read off upstream's catalogue rather than written down here.**
-`downloads.mongodb.org/full.json` flags every release `production_release` and `lts_release`, and
-the pair selects exactly the five above; the rapid releases between them (8.1, 7.3, 7.2, 7.1, 6.3 …)
-carry `continuous_release` and are not offered. A `9.0.0-rc0` is already in that document, dated
-2026-07-14, which is what the index's `rc` channel is for whenever it is wanted.
+**Half of which lines those are is read off upstream's catalogue, and this document was wrong about
+the other half.** It claimed that `production_release` and `lts_release` together select exactly the
+five lines above. Run against the catalogue while the recipe was being written, the pair selects
+**seven**: upstream flags 5.0 and 4.4 as LTS production releases too, and goes on publishing patches
+for them. So the flags do the half they can do — telling an LTS line from the rapid releases between
+them, which carry `continuous_release` — and the floor is a constant in the recipe with the
+paragraph below as its reason. That is the honest shape anyway: which lines upstream supports is
+upstream's fact and would go stale if it were copied here, and which of them can be offered *whole*
+is this repository's, and upstream states it nowhere.
+
+A `9.0.0-rc0` is already in that document, dated 2026-07-14, which is what the index's `rc` channel
+is for whenever it is wanted.
 
 **Windows on ARM is upstream's empty cell, not this repository's.** No version of MongoDB has ever
 published an `aarch64` Windows build — not a rapid release, not an LTS, not back to 4.4.
