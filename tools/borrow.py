@@ -197,6 +197,22 @@ def unpack(archive: Path, into: Path, suffix: str, wrapped: bool = True) -> Path
     if suffix == "zip":
         with zipfile.ZipFile(archive) as zipped:
             zipped.extractall(into)
+            # **`extractall` writes the bytes and drops the mode.** A zip made on Unix carries its
+            # permissions in the high sixteen bits of `external_attr`, and `zipfile` applies none of
+            # them — so an executable arrives without its executable bit. Until mongosh every zip
+            # here was a Windows one, where there is nothing to lose, which is why this went eleven
+            # recipes without being noticed; mongosh publishes its macOS builds as zips and the
+            # first CI run answered `PermissionError` on a file that was plainly there. Applied only
+            # where the mode means something, and only where the zip actually recorded one —
+            # `if mode` rather than a default, because a writer that recorded nothing is a writer
+            # this function has no fact to restore from, and inventing 0o755 for it would be an
+            # opinion. It is *not* a Windows-versus-Unix distinction in the archive: the zips this
+            # repository writes on Windows record 0o666 and 0o777, measured rather than assumed.
+            if os.name != "nt":
+                for member in zipped.infolist():
+                    mode = member.external_attr >> 16 & 0o7777
+                    if mode:
+                        (into / member.filename).chmod(mode)
     elif suffix == "7z":
         seven_zip(archive, into)
     else:
