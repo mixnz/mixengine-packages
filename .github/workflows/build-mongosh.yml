@@ -1,0 +1,109 @@
+name: build mongosh
+
+# Asked for, never automatic — the same rule every other workflow here keeps, for the same reason:
+# upstream releases on its own schedule and a human decides which version is wanted.
+#
+# **Its own workflow, beside the server's, because it is its own package.** mongosh is versioned on
+# its own clock and licensed Apache-2.0 against the server's SSPL, and a shell release should not
+# have to wait for a server release to reach anybody.
+#
+# **Five legs for six cells**, the same absent one as the server's: upstream has never built mongosh
+# for Windows on ARM.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "mongosh line (2), exact version (2.11.1), or 'latest'."
+        required: true
+        type: string
+      release:
+        description: 'Publish as a GitHub release. Off means build and keep the artifacts for inspection only.'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  pack:
+    # Every leg runs on the operating system and architecture it packs for: the recipe runs the
+    # shell from a directory it moved the tree to, and a Node program that cannot find its own
+    # runtime after a move is exactly what that proves.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: windows-2022,     os: windows, arch: x86_64 }
+          - { runner: macos-14,         os: macos,   arch: aarch64 }
+          - { runner: macos-15-intel,   os: macos,   arch: x86_64 }
+          - { runner: ubuntu-24.04,     os: linux,   arch: x86_64 }
+          - { runner: ubuntu-24.04-arm, os: linux,   arch: aarch64 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: borrow and repack
+        id: pack
+        # bash on every leg, Windows included, so the exit code is read the same way everywhere
+        # rather than in two dialects that could disagree. 75 is "upstream builds nothing for this
+        # target", which is an empty cell of the table and not a failure.
+        #
+        # GH_TOKEN because the recipe resolves a version against the GitHub releases API, and
+        # unauthenticated requests are limited to sixty an hour *per IP address* — which runners
+        # share.
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          code=0
+          python -u tools/mongosh.py --version "${{ inputs.version }}" --out dist || code=$?
+          if [ "$code" -eq 75 ]; then
+            echo "::notice::no upstream mongosh ${{ inputs.version }} for ${{ matrix.os }}/${{ matrix.arch }}; nothing to pack"
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          exit "$code"
+        timeout-minutes: 20
+      - uses: actions/upload-artifact@v4
+        if: steps.pack.outputs.skipped != 'true'
+        with:
+          name: mongosh-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    # One release per exact version, holding every artifact of it — the version read back out of
+    # each manifest rather than taken from the input, because the input may be a line or `latest`
+    # and each leg resolves it against upstream independently.
+    needs: pack
+    if: ${{ inputs.release && !failure() && !cancelled() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: incoming, merge-multiple: true }
+      - name: publish one release per version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          versions=$(jq -r '.version' incoming/*.json | sort -u)
+          for version in $versions; do
+            tag="mongosh-$version"
+            assets=()
+            for manifest in incoming/*.json; do
+              [ "$(jq -r '.version' "$manifest")" = "$version" ] || continue
+              # Both halves: the manifest is what the index generator reads, so a release holding
+              # only the archive is one the index cannot be rebuilt from.
+              assets+=("${manifest%.json}" "$manifest")
+            done
+            echo "== $tag: ${#assets[@]} artifact(s)"
+            if ! gh release view "$tag" >/dev/null 2>&1; then
+              gh release create "$tag" \
+                --title "mongosh $version" \
+                --notes "Relocatable mongosh $version for MixEngine, repacked from mongodb-js/mongosh under Apache-2.0. Every artifact answered --version from a directory it had been moved to before being published. This is the shell the MongoDB server archives stopped carrying at 6.0; it is versioned on its own clock and pairs with any server line this repository offers."
+            fi
+            gh release upload "$tag" "${assets[@]}" --clobber
+          done
