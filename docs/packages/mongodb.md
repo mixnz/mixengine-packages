@@ -215,7 +215,7 @@ is not what the Redis row does. If that reasoning changes it changes for both ro
 ## No end-of-life dates, on purpose
 
 MongoDB publishes its lifecycle as an HTML table and nothing else — no JSON, no API, no document
-`eol.py --check` could prove a transcription against. `data/eol.json` holds six kinds because six
+`tools/eol.py` could prove a transcription against. `data/eol.json` holds six kinds because six
 publishers offer a machine-readable one, and a seventh entry transcribed by hand from a web page is
 precisely what [P10](../roadmap-history.md) was written to stop. So `mongodb` carries no `eol` in the
 index, like `mysql`, `redis`, `memcached`, `nginx` and `caddy`, and
