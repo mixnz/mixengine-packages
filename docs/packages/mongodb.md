@@ -91,6 +91,27 @@ using `strip.IMAGES` rather than flags chosen here, because two recipes strippin
 by their own rules would disagree about the same file and nothing outside either could notice. What
 it changed is recorded in `upstream.changed`, path by path, with the command that changed it.
 
+**Two cells of two lines cannot be stripped at all, and they say so.** On 6.0 and 7.0, Apple's strip
+stops on both macOS architectures rather than finishing:
+
+```
+strip -x bin/mongod: fatal error: indirect symbol table entry 10249
+(past the end of the symbol table)
+```
+
+No such refusal from 8.0 upwards, so it is something upstream changed about how those binaries are
+linked; it is not a damaged download, because the archive was checked against the publisher's own
+SHA-256 two steps earlier. Those files are **kept as upstream published them** and named in `keeps`
+with the reason — the same trade `strip.symbols` already makes for a binary whose section and
+segment tables disagree: *the archive ships either way and upstream's binary is the one that works*.
+
+The cost is stated rather than absorbed: the macOS cells of 6.0 and 7.0 are tens of megabytes larger
+than their siblings, and `keeps` is where a reader finds out why instead of wondering. Because
+`strip` writes in place and a failed one has already written, the recipe copies each binary outside
+the tree first, puts it back when the strip stops, and compares the restored file's digest against
+the one it took before — "we shipped upstream's bytes" is a claim, and that is the moment it can be
+checked.
+
 ## Which Linux build, decided by reading the binary
 
 Upstream builds MongoDB per distribution, and the builds differ in something that matters more than

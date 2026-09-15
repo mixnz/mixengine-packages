@@ -367,6 +367,71 @@ def vcredist(tree: Path) -> str | None:
     return None
 
 
+def strip_or_keep(tree: Path, binaries: list[Path],
+                  operating_system: str) -> tuple[dict[str, str], dict[str, str]]:
+    """Strip each binary, or keep the one the platform's own ``strip`` refuses — and say which.
+
+    **Measured on 6.0 and 7.0, where Apple's strip stops rather than finishes:**
+
+        strip -x bin/mongod: fatal error: indirect symbol table entry 10249
+        (past the end of the symbol table)
+
+    Both macOS cells of both lines, and no such refusal from 8.0 upwards, so it is something
+    upstream changed about how those binaries are linked rather than anything about this pipeline —
+    the bytes were checked against the publisher's own SHA-256 two steps earlier.
+
+    Kept rather than refused, which is the trade :func:`strip.symbols` already makes for a file
+    whose section and segment tables disagree: *the archive ships either way and upstream's binary
+    is the one that works*. What is not optional is saying so. Each kept file goes into ``keeps``
+    with the reason, because an artifact 40 MB larger than its siblings for a reason nobody wrote
+    down is exactly the saving *One version means one thing* exists to make accountable.
+
+    **`strip` writes in place and a failed one has already written.** So the original is copied
+    outside the tree first, put back if the strip stops, and the restored file's digest is compared
+    against the one taken before — because "we shipped upstream's bytes" is a claim, and this is
+    the only moment anything can check it.
+    """
+    # Asked once, before anything is caught below. `strip.symbols` raises the same exception type
+    # for "this machine has no strip" as for "strip refuses this file", and those want opposite
+    # answers: a refusal is upstream's binary and is kept, a missing tool is a runner that cannot
+    # produce this artifact at all and must stop rather than quietly ship every symbol table.
+    if not shutil.which("strip"):
+        raise SystemExit(
+            "no `strip` on PATH, and every Unix cell of this kind ships stripped binaries — "
+            "packing here would publish a tree no other run of this recipe produces"
+        )
+
+    changed: dict[str, str] = {}
+    kept: dict[str, str] = {}
+
+    for binary in binaries:
+        relative = binary.relative_to(tree).as_posix()
+        original = strip.whole(binary)
+        spare = tree.parent / f"{binary.name}.before-strip"
+        shutil.copy2(binary, spare)
+        try:
+            changed |= strip.symbols(tree, [binary], strip.IMAGES[operating_system],
+                                     operating_system)
+        except SystemExit as refusal:
+            shutil.copy2(spare, binary)
+            if strip.whole(binary) != original:
+                raise SystemExit(
+                    f"{relative} could not be put back after `strip` stopped part-way through it, "
+                    f"so this tree no longer holds what upstream published. Original refusal: "
+                    f"{refusal}"
+                ) from refusal
+            kept[relative] = (
+                f"its symbol table, because this platform's `strip` refuses the file rather than "
+                f"shrinking it — {refusal}. Upstream's bytes are shipped unchanged; the other "
+                f"cells of this version are stripped."
+            )
+            print(f"keeping {relative} as upstream published it: {refusal}")
+        finally:
+            spare.unlink(missing_ok=True)
+
+    return changed, kept
+
+
 def describe(tree: Path, version: str, target: tuple[str, str],
              record: dict, download: dict) -> dict:
     """What is in the archive, as the daemon will read it."""
@@ -455,17 +520,19 @@ def main() -> None:
         # Windows has nothing left to strip once the .pdb files are gone; the Unix cells carry their
         # symbol tables inside the binaries, 45.6 MB of them in mongod alone. Levelling the four
         # down to the one is what makes this version one artifact rather than five.
-        changed = {}
+        changed: dict[str, str] = {}
+        kept: dict[str, str] = {}
         if not windows:
             binaries = [tree / path for path in LAYOUT["unix"].values()]
             # `strip.IMAGES` rather than flags chosen here, for the reason `strip.py` opens with:
             # two recipes stripping their own binaries by their own rules would disagree about the
             # same file, and nothing outside either recipe could notice.
-            changed = strip.symbols(tree, binaries, strip.IMAGES[operating_system],
-                                    operating_system)
-            print(f"stripped {len(changed)} binar{'y' if len(changed) == 1 else 'ies'}")
+            changed, kept = strip_or_keep(tree, binaries, operating_system)
+            print(f"stripped {len(changed)} binar{'y' if len(changed) == 1 else 'ies'}"
+                  + (f", kept {len(kept)}" if kept else ""))
 
-        manifest = borrow.declare(tree, manifest, removed=removed, changed=changed or None)
+        manifest = borrow.declare(tree, manifest, removed=removed,
+                                  changed=changed or None, keeps=kept or None)
 
         # The Linux builds name libssl.so.3, libcrypto.so.3 and libcurl.so.4 and expect the machine
         # to have supplied them. Both binaries already carry RUNPATH=$ORIGIN/../lib, so bundling is
