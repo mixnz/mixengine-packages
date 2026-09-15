@@ -34,6 +34,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import borrow  # noqa: E402  — siblings, and this directory is not importable as a package
 import relocate  # noqa: E402
+import strip  # noqa: E402
 
 API = "https://api.github.com/repos/mongodb-js/mongosh/releases"
 
@@ -180,8 +181,19 @@ def main() -> None:
             raise SystemExit(f"{url} answered {error.code}") from error
 
         tree = borrow.unpack(archive, work / "unpacked", suffix)
+
+        # **Upstream ships this one unevenly, and the rule caught it rather than a reading of the
+        # release page.** `bin/mongosh` carries 7.6 MB of DWARF on Linux and none on macOS or
+        # Windows, so the first CI run packed three cells and was refused on two by
+        # `borrow.undebugged`. Stripped rather than exempted: nothing in this archive is linked
+        # against by name, the saving is the whole point, and it levels the five cells to what the
+        # other three already were. `strip.debug` answers `{}` off Linux by construction.
+        changed = strip.debug(tree)
+
         manifest = describe(tree, version, target, url, borrow.sha256(archive))
-        manifest = borrow.declare(tree, manifest)
+        manifest = borrow.declare(tree, manifest, changed=changed or None)
+
+        # Proven after the strip, because the stripped tree is the one that ships.
         manifest["smoke"] = smoke(tree, version, manifest["provides"])
 
         if sys.platform != "win32":
