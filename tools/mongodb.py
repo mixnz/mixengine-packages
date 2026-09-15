@@ -26,15 +26,19 @@ Python 3 stdlib only, by policy: this runs on a GitHub runner with nothing insta
 
 from __future__ import annotations
 
+import argparse
 import json
+import shutil
 import struct
 import sys
+import tempfile
 import urllib.error
 import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import borrow  # noqa: E402  — siblings, and this directory is not importable as a package
+import relocate  # noqa: E402
 
 # The newest release of every line, 400 KB, which is what a `--version 8.3` run needs. `full.json`
 # is 50 MB and holds every patch ever published; it is fetched only when an exact older version is
@@ -86,6 +90,27 @@ FLOOR = (6, 0)
 # which one is taken is settled by `needed` below, because the two things that matter — the glibc
 # floor and which OpenSSL the build expects — are properties of the binary rather than of the name.
 LINUX_CANDIDATES = ("rhel8", "rhel90", "rhel93", "rhel10", "ubuntu2004", "ubuntu2204", "ubuntu2404")
+
+# What the archive is expected to hold, per OS. Two binaries: the server and the router. There is no
+# shell here and there has not been one since 6.0 — `mongosh` is its own kind, published from its
+# own repository under its own licence, which is `tools/mongosh.py`.
+LAYOUT = {
+    "windows": {"mongod": "bin/mongod.exe", "mongos": "bin/mongos.exe"},
+    "unix": {"mongod": "bin/mongod", "mongos": "bin/mongos"},
+}
+
+# Removed from every cell, and the reason each one goes. `install_compass` and `Install-Compass.ps1`
+# are the same file under two names: a script that downloads and installs MongoDB Compass, which is
+# a different product and is not what anybody asked this daemon to install.
+NOT_SHIPPED = {
+    "bin/install_compass": "a downloader for MongoDB Compass, which is a different product",
+    "bin/Install-Compass.ps1": "a downloader for MongoDB Compass, which is a different product",
+    "bin/vc_redist.x64.exe": (
+        "the Visual C++ redistributable installer — 25.4 MB of setup program that no running "
+        "process reads. The precondition it exists to satisfy is stated as requires.vcredist "
+        "instead, measured off mongod.exe's import table."
+    ),
+}
 
 
 def catalogue(exact: bool) -> list[dict]:
@@ -284,3 +309,151 @@ def resolve(spec: str, target: tuple[str, str]) -> tuple[str, dict]:
             f"{record['version']}; nothing to borrow for this cell."
         )
     return record["version"], download
+
+
+def subtract(tree: Path) -> list[str]:
+    """Delete what a running process does not read, and answer with what was deleted.
+
+    Two kinds of thing. The named ones in `NOT_SHIPPED`, and every ``.pdb`` — upstream's Windows zip
+    is 923 MB of which 844 MB is `mongod.pdb` and `mongos.pdb`. ``borrow.undebugged`` does not catch
+    those: it reads DWARF sections *inside* binaries, and a `.pdb` is a file of its own, so this is
+    the recipe's decision and is declared in ``upstream.removed`` rather than left to be inferred
+    from a size.
+    """
+    removed = []
+    for relative in sorted(NOT_SHIPPED):
+        path = tree / relative
+        if path.exists():
+            path.unlink()
+            removed.append(relative)
+
+    for path in sorted(tree.rglob("*.pdb")):
+        removed.append(path.relative_to(tree).as_posix())
+        path.unlink()
+
+    return removed
+
+
+def vcredist(tree: Path) -> str | None:
+    """Which Visual C++ runtime ``mongod.exe`` imports, as the schema spells it.
+
+    Measured off the import table for the reason ``mysql.py`` gives about ``msvcr100.dll``: a line's
+    documentation and its binaries disagree, and the binaries are what fails to start. Every toolset
+    from 2015 onwards imports the same ``VCRUNTIME140`` family and their redistributables are
+    ABI-compatible, so the newest of that family is what is declared — installing it satisfies any
+    of them, and naming an older one would be a claim this recipe cannot check.
+    """
+    binary = tree / LAYOUT["windows"]["mongod"]
+    if not binary.exists():
+        return None
+    imports = sorted({name.lower() for name in relocate.pe_imports(binary)})
+    print(f"mongod.exe imports {', '.join(imports)}")
+    if any(name.startswith(("vcruntime140", "msvcp140")) for name in imports):
+        return "2022"
+    return None
+
+
+def describe(tree: Path, version: str, target: tuple[str, str],
+             record: dict, download: dict) -> dict:
+    """What is in the archive, as the daemon will read it."""
+    operating_system, arch = target
+    windows = operating_system == "windows"
+    layout = LAYOUT["windows" if windows else "unix"]
+
+    provides = {name: path for name, path in layout.items() if (tree / path).exists()}
+    missing = sorted(set(layout) - set(provides))
+    if missing:
+        raise SystemExit(
+            f"the archive provides no {', '.join(missing)} — expected at "
+            f"{', '.join(layout[name] for name in missing)}. Contents: "
+            f"{sorted(path.name for path in (tree / 'bin').iterdir())[:20]}"
+        )
+
+    return {
+        "schema": 1,
+        "kind": "mongodb",
+        "version": version,
+        "os": operating_system,
+        "arch": arch,
+        "source": "borrowed",
+        "upstream": {
+            "project": "mongodb/mongo",
+            # The commit upstream built this release from, which the catalogue publishes and
+            # github.com/mongodb/mongo carries as a tag. MongoDB Community Server is SSPL v1, a
+            # copyleft in GPLv3's shape, and this is the source route: nothing here is patched, so
+            # naming the commit is the whole claim, and a reader can check it without trusting a
+            # sentence in a document.
+            "release": record.get("public_githash") or record.get("githash", ""),
+            "url": download["archive"]["url"],
+            "sha256": download["archive"]["sha256"],
+            "verified_against": (
+                "downloads.mongodb.org's own full.json, over HTTPS to the publisher"
+            ),
+        },
+        "provides": provides,
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--version", required=True,
+        help="a line (6.0, 7.0, 8.0, 8.2, 8.3), an exact version (8.3.11), or 'latest'",
+    )
+    parser.add_argument("--out", default="dist", type=Path)
+    args = parser.parse_args()
+
+    target = borrow.host("MongoDB")
+    operating_system, arch = target
+    windows = operating_system == "windows"
+    suffix = TARGETS[target][1] if target in TARGETS else "tgz"
+
+    version, download = resolve(args.version, target)
+    if version != args.version:
+        print(f"{args.version} resolved to {version}")
+    record = next(r for r in catalogue(exact=True) if r["version"] == version)
+
+    work = Path(tempfile.mkdtemp(prefix="mixengine-mongodb-"))
+    try:
+        if operating_system == "linux":
+            download, archive, tree = linux_download(record, ARCH["linux"][arch], work)
+        else:
+            url = download["archive"]["url"]
+            archive = work / url.rsplit("/", 1)[-1]
+            print(f"borrowing {url}")
+            try:
+                urllib.request.urlretrieve(url, archive)
+            except urllib.error.HTTPError as error:
+                raise SystemExit(f"{url} answered {error.code}") from error
+            tree = borrow.unpack(archive, work / "unpacked", suffix)
+
+        published = download["archive"]["sha256"]
+        actual = borrow.sha256(archive)
+        if actual != published:
+            raise SystemExit(f"sha256 mismatch: got {actual}, full.json says {published}")
+        print(f"sha256 {actual} (verified against downloads.mongodb.org/full.json)")
+
+        removed = subtract(tree)
+        print(f"removed {len(removed)} path(s): {', '.join(removed)}")
+
+        manifest = describe(tree, version, target, record, download)
+        manifest = borrow.declare(tree, manifest, removed=removed)
+
+        # Every cell, every line. MongoDB has refused to start on an x86_64 without AVX since 5.0,
+        # and an artifact that cannot state its own precondition hands the user a dead process
+        # instead of a sentence.
+        requires = {"cpu": "avx"}
+        if windows:
+            runtime = vcredist(tree)
+            if runtime:
+                requires["vcredist"] = runtime
+        manifest["requires"] = requires
+
+        borrow.undebugged(tree)
+        borrow.publish(tree, manifest, args.out, suffix)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    main()
