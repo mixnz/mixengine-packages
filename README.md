@@ -161,6 +161,23 @@ artifacts of one version — one Oracle's 2021 build at a glibc floor of 2.12, o
 against an OpenSSL this repository supplies — would be two different databases under one version
 number. Windows on ARM is empty on every line: Oracle has never published one, at any version.
 
+### [MongoDB](docs/packages/mongodb.md)
+
+| Version | macOS aarch64 | macOS x86_64 | Linux x86_64 | Linux aarch64 | Windows x86_64 | Windows aarch64 |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **6.0** | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| **7.0** | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| **8.0** | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| **8.2** | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| **8.3** | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+
+Every cell borrowed, and Windows on ARM is upstream's own absence: no MongoDB has ever been built
+for it, at any version. The floor is 6.0 because that is where a line stops being whole — upstream
+withdrew macOS from 5.0 and 4.4 *while it was still patching them*, so the newest patch of either
+has no macOS build at all. **Twenty-five cells and no shell in any of them:** the server archive
+stopped carrying one at 6.0, and `mongosh` is a separate release under a separate licence, which is
+why its recipe is here and its row is not — see that page.
+
 ### [PostgreSQL](docs/packages/postgres.md)
 
 | Version | macOS aarch64 | macOS x86_64 | Linux x86_64 | Linux aarch64 | Windows x86_64 | Windows aarch64 |

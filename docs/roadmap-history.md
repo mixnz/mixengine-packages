@@ -2065,6 +2065,53 @@ three routes and not two: 5.7 and newer run `mysqld --initialize-insecure`, 5.6 
 a row in `release/build.sh`'s table, because the input name is not the same on every workflow;
 `docs/packages/mysql.md`; and a row in the README table.
 
+### [x] P18 — MongoDB, the half of a promise the index already makes
+
+Every PHP this repository publishes carries the `mongodb` extension, on every branch and every cell,
+because P2 above fails a build without it. Nothing here
+installed a MongoDB for it to talk to. Closed as `tools/mongodb.py` and `tools/mongodb_smoke.py`:
+five LTS lines from 6.0, twenty-five cells, every one borrowed, and a sixth column that is
+upstream's own absence — no MongoDB has ever been built for Windows on ARM.
+
+**The largest single thing the recipe does is subtraction.** Upstream's Windows zip is 923.3 MB over
+twelve entries, of which `mongod.pdb` and `mongos.pdb` are 843.6 MB and `vc_redist.x64.exe` another
+25.4 MB; what a running process reads packs to 54.1 MB. `borrow.undebugged` could not have caught
+those — it reads DWARF *inside* binaries and a `.pdb` is a file of its own — so the removal is the
+recipe's own and is declared. The Unix cells carry 45.6 MB of symbol table in `mongod` alone and are
+levelled down to what Windows already was.
+
+It also opened the one field the index could not write. MongoDB refuses to start on an x86_64
+without AVX, so `requires.cpu` was added to `index.schema.json` — optional, an enum, and `schema`
+stays at 1, which that document's own rule allows.
+
+**Seven things CI found that no check on one platform could have.** The Linux legs reported an empty
+cell in five seconds, because upstream puts the *distribution* in a download's `target` field and
+the recipe was looking for `linux`. `mongod --shutdown` is offered on Linux only — macOS answers 2 —
+and the first smoke test asked "is this Windows", which is the wrong question and passed on the one
+platform it was written on. `zipfile.extractall` drops the mode bits a zip recorded, so `mongosh`
+arrived on macOS without its executable bit: eleven recipes had never noticed, because until this
+row every zip here was a Windows one. `mongosh` ships 7.6 MB of DWARF on Linux and none elsewhere,
+which `borrow.undebugged` refused and was right to. The Linux artifacts came out needing glibc
+**2.38** — `mongod` asks for 2.34 and the libraries `relocate.bundle` copied off a 24.04 runner
+asked for 2.38 — so the packing legs moved to 22.04, where `mariadb_deb.py` and `build-postgres.yml`
+already were, and the floor fell to 2.34. And on 6.0 and 7.0 Apple's `strip` stops rather than
+shrinks: *indirect symbol table entry 12036 (past the end of the symbol table)*, both macOS cells,
+both lines, and no such refusal from 8.0 up.
+
+That last one is the only place this row bends a rule, and it bends it the way `strip.symbols`
+already does for a binary whose section and segment tables disagree: the file is kept as upstream
+published it and named in `keeps` with the reason. `strip` writes in place and a failed one has
+already written, so the original is copied outside the tree, put back, and its digest compared
+against the one taken before — because *we shipped upstream's bytes* is a claim, and that is the
+only moment anything can check it.
+
+**What the row turned out to be for.** 8.x requires macOS 14, a 2023 release; 7.0 and 6.0 reach back
+to 11.0 and 10.14. The old lines are not a courtesy, they are the answer for a machine that cannot
+run the new ones — the argument PHP 7.0 is offered under, arrived at from the other direction.
+
+See [the design](superpowers/specs/2026-09-15-mongodb-packaging-design.md) and
+[packages/mongodb.md](packages/mongodb.md).
+
 ---
 
 ## The tools

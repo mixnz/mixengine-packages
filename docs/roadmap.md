@@ -10,8 +10,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · **(rule)** = a conforma
 
 ## Where we are
 
-Every row of the runtime table is packed, and every service row that has been evaluated is packed —
-with one exception, and it is new: MongoDB has been evaluated and is not packed, which is P18.
+Every row of the runtime table is packed, and every service row that has been evaluated is packed.
 Every recipe now conforms to the rule and there is a program that says so. What is *not* done is the
 **repack**: the artifacts on the releases page were packed before P2–P5, and `tools/parity.py` names
 every one of those differences on every run. [P6](roadmap-history.md) is what it says and what it
@@ -108,6 +107,7 @@ the fact that it is finished; this is the index into it, in the order the tasks 
 | **P8b** | The licence check that could not fail, because somebody else's licence answered before it was reached. |
 | **P9** | nginx: borrowed on Windows, and `nginx -V` there is the specification the other four cells are compiled against. |
 | **P14** | MySQL: five lines, and eight cells compiled here because Oracle withdrew macOS while those lines were still alive. |
+| **P18** | MongoDB: five LTS lines borrowed from 6.0, a Windows zip that was 91% debug symbols, and seven things only CI could find. |
 
 **The tools**
 
@@ -182,32 +182,25 @@ green on 19" but **"is there a green `REL_19_STABLE` run from an animal that is 
 then the first green run of `postgres_build.py` is itself the evidence, and it costs one
 `workflow_dispatch` to find out.
 
-### [ ] P18 — MongoDB, the half of a promise the index already makes
+### [ ] P18a — `mongosh` exists as a recipe and not as an artifact
 
-Every PHP this repository publishes carries the `mongodb` extension, on every branch and every cell,
-because [P2](roadmap-history.md) fails a build without it. Nothing here installs a MongoDB for it to
-talk to. This closes that: five LTS lines from 6.0, five cells each, all borrowed — and the sixth is
-upstream's own empty cell, since no MongoDB has ever been built for Windows on ARM.
+From 6.0 the MongoDB server archive ships no shell at all, so the row [P18](roadmap-history.md)
+published leaves `mix database open` with nothing to open. `mongosh` is its own release train under
+its own licence — Apache-2.0 against the server's SSPL v1 — which makes it a second kind rather than
+a second directory inside the first, for the reason [P17](roadmap-history.md) made Composer one:
+two products under one version number cannot answer whose version it is.
 
-The evaluation is done and the measurements are in the design; what is left is the recipe. The
-largest single thing it does is subtraction: upstream's Windows zip is 923 MB of which 844 MB is
-debug symbols and 25 MB is a redistributable installer, and what a running process reads is about
-54 MB. It also adds the one field the index cannot currently write — `requires.cpu`, because MongoDB
-refuses to start on an x86_64 without AVX and an artifact that cannot state its own precondition
-hands the user a dead process instead of a sentence.
+**`tools/mongosh.py` and `.github/workflows/build-mongosh.yml` are written and green on all five
+cells**, measured the same way the server's were — 2.11.1, `bin/mongosh` proven from a directory the
+tree was moved to, `parity.py` clean. Nothing is published, and that is the whole of what is left.
 
-See [the design](superpowers/specs/2026-09-15-mongodb-packaging-design.md), which carries the cell
-matrix, the Linux build criterion, the licence route and the four things still to be measured.
+It is [P12](roadmap-history.md)'s shape at one row rather than four, and it is named here rather
+than left implicit for exactly the reason that task existed: a recipe with no release is a gap that
+looks like completion from inside this file.
 
-### [ ] P18a — `mongosh`, because the server stopped carrying a shell
-
-From 6.0 the server tarball ships no shell at all, so a `mongodb` artifact alone leaves
-`mix database open` with nothing to open. `mongosh` is its own release train under its own licence —
-Apache-2.0 against the server's SSPL — which makes it a second kind rather than a second directory
-in the first one. Same five cells, same absent one.
-
-With P18 above, and on the same
-[design](superpowers/specs/2026-09-15-mongodb-packaging-design.md).
+One decision to make before publishing, and it is not this repository's alone: MixEngine has to
+learn that a MongoDB and a `mongosh` are installed as a pair, since neither archive mentions the
+other. See [the design](superpowers/specs/2026-09-15-mongodb-packaging-design.md).
 
 ---
 

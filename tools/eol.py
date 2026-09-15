@@ -41,6 +41,15 @@ to need ``endoflife.date``. None of them do:
              version against; ``eolDate`` per major.
 ===========  =====================================================================================
 
+**Six, and the kinds that are not here were asked rather than forgotten.** MongoDB is the one worth
+naming, because it looks like it should qualify: it runs a published support lifecycle and a
+machine-readable release catalogue, and the two are separate documents — ``full.json`` carries
+``lts_release`` and a release date and no end date at all, while the lifecycle lives in an HTML
+table on a marketing page. A date transcribed from that table by hand is exactly what this file
+exists to stop, so ``mongodb`` and ``mongosh`` carry no ``eol`` in the index, as ``mysql``,
+``redis``, ``memcached``, ``nginx`` and ``caddy`` do not. The absence is a decision; only this
+sentence can tell a reader that.
+
 Four decisions this file is answerable for.
 
 *The check runs on a clock, not on a pack, because the MariaDB pattern does not generalise.*

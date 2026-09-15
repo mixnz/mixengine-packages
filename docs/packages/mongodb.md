@@ -165,6 +165,24 @@ It is the third precondition here measured off the binaries rather than read off
 unlike `vcredist` and `glibc` it is not a version but a capability: there is no *or newer* to
 compare against. Every cell of every line offered carries it.
 
+## The macOS floor moves, and it is the reason the old lines earn their place
+
+Measured off `LC_BUILD_VERSION` in the published artifacts rather than read off a support page:
+
+| Line | macOS aarch64 | macOS x86_64 |
+| --- | :---: | :---: |
+| 8.0, 8.2, 8.3 | **14.0** | **14.0** |
+| 6.0, 7.0 | 11.0 | 10.14 |
+
+**MongoDB 8.x requires macOS 14**, which is a 2023 release. A machine on macOS 13 or older cannot
+run any 8.x artifact here, and 7.0 is the newest line it can. That turns the older lines from a
+courtesy into the answer for a specific machine — the same argument PHP 7.0 is offered under, and
+it is worth stating because nothing on the download page says it.
+
+The two Intel cells reach furthest back: 10.14 is 2018. Each artifact carries its own floor as
+`requires.macos`, so a daemon can say *this version does not run here* instead of handing over an
+archive whose loader fails.
+
 ## What the artifacts promise
 
 ```
