@@ -1,0 +1,111 @@
+name: build mongodb
+
+# Asked for, never automatic — the same rule every other workflow here keeps, for the same reason:
+# upstream releases on its own schedule and a human decides which version is wanted.
+#
+# **Five legs for six cells.** There is no Windows/aarch64 leg because there is no Windows/aarch64
+# MongoDB, at any version; the recipe would answer 75 and a leg that exists only to be skipped is a
+# leg somebody has to read past. The 75 path stays wired up anyway — a line that loses a target
+# upstream is exactly the surprise it exists for.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "MongoDB line (6.0, 7.0, 8.0, 8.2, 8.3), exact version (8.3.11), or 'latest'. LTS lines from 6.0 up."
+        required: true
+        type: string
+      release:
+        description: 'Publish as a GitHub release. Off means build and keep the artifacts for inspection only.'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  pack:
+    # Every leg runs on the operating system and architecture it packs for, because the recipe does
+    # not merely unpack what it downloaded — it starts the server, asks it a question over the wire
+    # and shuts it down, from a directory the tree was moved to. None of that can be cross-packed.
+    #
+    # The Linux legs download twice on purpose. Upstream builds per distribution and the recipe
+    # takes the lowest glibc floor among the builds that link OpenSSL 3, which it settles by reading
+    # DT_NEEDED out of the mongod it just fetched — so the rhel8 candidate is fetched, measured,
+    # found to want OpenSSL 1.1.1, and rejected. That is one wasted download per leg and it is what
+    # keeps the choice a measurement rather than a table that goes stale.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: windows-2022,     os: windows, arch: x86_64 }
+          - { runner: macos-14,         os: macos,   arch: aarch64 }
+          - { runner: macos-15-intel,   os: macos,   arch: x86_64 }
+          - { runner: ubuntu-24.04,     os: linux,   arch: x86_64 }
+          - { runner: ubuntu-24.04-arm, os: linux,   arch: aarch64 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: borrow and repack
+        id: pack
+        # bash on every leg, Windows included, so the exit code is read the same way everywhere
+        # rather than in two dialects that could disagree.
+        #
+        # 75 is "upstream builds nothing for this target", which is an empty cell of the table and
+        # not a failure. `|| code=$?` rather than reading `$?` on the next line, because
+        # `shell: bash` runs with `-e` and a non-zero exit would end the step before anything could
+        # look at the code.
+        shell: bash
+        run: |
+          code=0
+          python -u tools/mongodb.py --version "${{ inputs.version }}" --out dist || code=$?
+          if [ "$code" -eq 75 ]; then
+            echo "::notice::no upstream MongoDB ${{ inputs.version }} for ${{ matrix.os }}/${{ matrix.arch }}; nothing to pack"
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          exit "$code"
+        timeout-minutes: 30
+      - uses: actions/upload-artifact@v4
+        if: steps.pack.outputs.skipped != 'true'
+        with:
+          name: mongodb-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    # One release per exact version, holding every artifact of it — the version read back out of
+    # each manifest rather than taken from the input, because the input may be a line or `latest`
+    # and each leg resolves it against upstream independently.
+    needs: pack
+    if: ${{ inputs.release && !failure() && !cancelled() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: incoming, merge-multiple: true }
+      - name: publish one release per version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          versions=$(jq -r '.version' incoming/*.json | sort -u)
+          for version in $versions; do
+            tag="mongodb-$version"
+            assets=()
+            for manifest in incoming/*.json; do
+              [ "$(jq -r '.version' "$manifest")" = "$version" ] || continue
+              # Both halves: the manifest is what the index generator reads, so a release holding
+              # only the archive is one the index cannot be rebuilt from.
+              assets+=("${manifest%.json}" "$manifest")
+            done
+            echo "== $tag: ${#assets[@]} artifact(s)"
+            if ! gh release view "$tag" >/dev/null 2>&1; then
+              gh release create "$tag" \
+                --title "MongoDB $version" \
+                --notes "Relocatable MongoDB $version for MixEngine, repacked from mongodb.org under the SSPL v1. Every artifact was started as a server from a directory it had been moved to, answered a question over the wire protocol and was shut down before being published — see mixengine-artifact.json inside each one for what was proven, what was removed and which upstream archive it came from. There is no shell in these archives: mongosh is published as its own package."
+            fi
+            gh release upload "$tag" "${assets[@]}" --clobber
+          done

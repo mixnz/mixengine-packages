@@ -39,6 +39,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import borrow  # noqa: E402  — siblings, and this directory is not importable as a package
 import relocate  # noqa: E402
+import strip  # noqa: E402
 
 # The newest release of every line, 400 KB, which is what a `--version 8.3` run needs. `full.json`
 # is 50 MB and holds every patch ever published; it is fetched only when an exact older version is
@@ -437,7 +438,34 @@ def main() -> None:
         print(f"removed {len(removed)} path(s): {', '.join(removed)}")
 
         manifest = describe(tree, version, target, record, download)
-        manifest = borrow.declare(tree, manifest, removed=removed)
+
+        # Windows has nothing left to strip once the .pdb files are gone; the Unix cells carry their
+        # symbol tables inside the binaries, 45.6 MB of them in mongod alone. Levelling the four
+        # down to the one is what makes this version one artifact rather than five.
+        changed = {}
+        if not windows:
+            binaries = [tree / path for path in LAYOUT["unix"].values()]
+            # `strip.IMAGES` rather than flags chosen here, for the reason `strip.py` opens with:
+            # two recipes stripping their own binaries by their own rules would disagree about the
+            # same file, and nothing outside either recipe could notice.
+            changed = strip.symbols(tree, binaries, strip.IMAGES[operating_system],
+                                    operating_system)
+            print(f"stripped {len(changed)} binar{'y' if len(changed) == 1 else 'ies'}")
+
+        manifest = borrow.declare(tree, manifest, removed=removed, changed=changed or None)
+
+        # The Linux builds name libssl.so.3, libcrypto.so.3 and libcurl.so.4 and expect the machine
+        # to have supplied them. Both binaries already carry RUNPATH=$ORIGIN/../lib, so bundling is
+        # a copy rather than a rewrite — but `bundle` is what puts the libraries there and `verify`
+        # is what says nothing in the tree reaches outside it afterwards.
+        if operating_system == "linux":
+            bundled = relocate.bundle(tree, libdir="lib")
+            print(f"bundled {len(bundled)}: {', '.join(sorted(bundled))}")
+            escaping = relocate.verify(tree)
+            if escaping:
+                raise SystemExit(
+                    "after bundling, these still resolve outside the tree: " + "; ".join(escaping)
+                )
 
         # Every cell, every line. MongoDB has refused to start on an x86_64 without AVX since 5.0,
         # and an artifact that cannot state its own precondition hands the user a dead process
@@ -447,6 +475,13 @@ def main() -> None:
             runtime = vcredist(tree)
             if runtime:
                 requires["vcredist"] = runtime
+        else:
+            # Measured off the finished tree, after bundling: the floor of an artifact is the
+            # highest floor of anything in it, the libraries it carries included.
+            measured = relocate.floor(tree)
+            if measured:
+                requires[measured[0]] = measured[1]
+                print(f"needs {measured[0]} {measured[1]} or newer")
         manifest["requires"] = requires
 
         borrow.undebugged(tree)
