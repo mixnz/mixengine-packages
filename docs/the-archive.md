@@ -35,10 +35,10 @@ costs; it is what happened, written down here because a promise this document ma
 tense has a date on it now.
 
 Everything was rebuilt the same day, from the same recipes, at the same version of each line: 55
-packages this time, because the four kinds [P12](roadmap.md) was open about — PostgreSQL, Redis,
-memcached and nginx — were published in the same pass. Every version number that existed before
-exists again. **None of the bytes are the same ones.** They were packed at a different minute by a
-different runner, so every sha256 in the index is new, and any blueprint that pinned a hash from
+packages this time, because the four kinds [P12](roadmap-history.md) was open about — PostgreSQL,
+Redis, memcached and nginx — were published in the same pass. Every version number that existed
+before exists again. **None of the bytes are the same ones.** They were packed at a different minute
+by a different runner, so every sha256 in the index is new, and any blueprint that pinned a hash from
 before this date will read the artifact it names as a different file — which is exactly the failure
 this document says has no quiet repair, arriving by a route it did not anticipate: not a deleted
 asset, but a deleted repository.

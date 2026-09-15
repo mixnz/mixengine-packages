@@ -19,8 +19,9 @@ tools/        the recipes themselves, plus index generation and verification —
               only for anything that runs on a build machine; `verify.py` alone pulls in
               `jsonschema`
 .github/      the workflows that run the recipes on GitHub runners
-docs/         one page per package under `packages/`, the rules they all answer to beside it, and
-              `roadmap.md` — the ordered list of what is left
+docs/         one page per package under `packages/`, the rules they all answer to beside it,
+              `roadmap.md` — what is left — and `roadmap-history.md`, which is what every closed
+              task settled
 ```
 
 Nothing here is built on a developer's machine on purpose. There is no macOS or Linux in this
@@ -39,9 +40,9 @@ line**, and every patch release ever published on that line stays in the index �
 | — | no artifact is offered there, for the reason on that package's page |
 
 **No cell below is a recipe waiting to be run.** There used to be a third mark for that — a kind
-whose recipe was finished and whose releases page held nothing — and [P12](docs/roadmap.md) was the
-task of running the four builds it stood for. It is closed, and the mark is gone with it: every cell
-here is either an archive or a stated absence.
+whose recipe was finished and whose releases page held nothing — and
+[P12](docs/roadmap-history.md) was the task of running the four builds it stood for. It is closed,
+and the mark is gone with it: every cell here is either an archive or a stated absence.
 
 The ✅ marks are what the index actually contains; the — marks are what the recipe that would produce
 the cell says about it. Where the two could disagree, the index wins and this table is wrong —
@@ -248,8 +249,10 @@ index, so that cell is empty.
   promise costs, what GitHub can and cannot enforce, and the signing key.
 - **[Building from source](docs/building-from-source.md)** — ten rounds of CI on PHP's legacy rows,
   and almost none of it about PHP. Read it before opening any **built** cell.
-- **[Roadmap](docs/roadmap.md)** — the ordered list of what is left, and why each thing is in that
-  order.
+- **[Roadmap](docs/roadmap.md)** — where the pipeline stands, and what is left. One task, at the
+  time of writing, and it waits on an upstream release.
+- **[What each task settled](docs/roadmap-history.md)** — the thirty-two that are closed, kept whole
+  and in the order they were written, because what a task found outlasts the fact that it is done.
 
 ## Licences
 

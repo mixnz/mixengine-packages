@@ -10,7 +10,7 @@ name: check end-of-life dates
 # is packed — but an end-of-life date changes on a calendar, and the lines closest to their date are
 # exactly the ones nobody is packing any more. Ruby 3.2 ended in April 2026 and will never be
 # repacked; the date written for it was wrong by a day and only a scheduled check could have found
-# that. See P10 in docs/roadmap.md.
+# that. See P10 in docs/roadmap-history.md.
 on:
   schedule:
     # Monday morning UTC. Weekly because a publisher moves a date a few times a year, and a check
