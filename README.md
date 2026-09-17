@@ -34,6 +34,12 @@ One table per package. The six columns are the six cells MixEngine runs on; a ro
 line**, and every patch release ever published on that line stays in the index — see
 [the archive](docs/the-archive.md) for why that is a promise rather than a habit.
 
+**A table shows at most the fifteen newest lines of its package**, one row per line and never one
+per patch: PHP 8.5.2 being published is what the **8.5** row means, and 8.5.1 has no row of its own.
+The cap is on this page and nowhere else — a line that falls off the bottom of its table is still in
+the index, still installable, and still listed on its package's page, which is where the full list
+lives.
+
 | Mark | Means |
 | :---: | --- |
 | ✅ | an archive for that cell is in the published, signed index today |
@@ -44,8 +50,8 @@ whose recipe was finished and whose releases page held nothing — and
 [P12](docs/roadmap-history.md) was the task of running the four builds it stood for. It is closed,
 and the mark is gone with it: every cell here is either an archive or a stated absence.
 
-The ✅ marks are what the index actually contains; the — marks are what the recipe that would produce
-the cell says about it. Where the two could disagree, the index wins and this table is wrong —
+The ✅ marks are what the index actually contains for the lines shown; the — marks are what the
+recipe that would produce the cell says about it. Where the two could disagree, the index wins and this table is wrong —
 `tools/permanence.py` is what re-reads the index, and each package's page is what explains the shape.
 
 ### [PHP](docs/packages/php.md)
