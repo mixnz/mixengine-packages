@@ -2198,6 +2198,41 @@ and 1.26, 13.0 on 1.27 — and it is read off `LC_BUILD_VERSION` rather than wri
 download and run a Go other than the one installed; the daemon renders `GOTOOLCHAIN=local`, and that
 is not decided here.
 
+### [x] P20 — Java
+
+Microsoft Build of OpenJDK on the four LTS lines — 11.0.32.1, 17.0.20.1, 21.0.12.1 and 25.0.4.1 — six
+cells each, all 24 borrowed and published on 2026-09-17. The recipe is `tools/java.py`; the reasoning
+is [the design](superpowers/specs/2026-09-17-java-packaging-design.md) and
+[packages/java.md](packages/java.md).
+
+**The publisher was chosen by the one cell nobody looks at.** Temurin has a Windows ARM64 JDK on 21
+from 21.0.5 and on no release of 11, 17 or 25; Microsoft has all six cells on all four lines. That was
+measured cell by cell against both APIs before anything else was decided, and it is the whole reason
+this row is not the build everybody names.
+
+**Three things were measured on a development machine and held on every runner.** No binary on any
+cell carries debug information. The Windows cells import the Visual C++ runtime and ship it beside
+`jvm.dll`, so the recipe declares a redistributable only for one imported and absent — which
+`mongodb.vcredist`'s rule would have got wrong. And every library in the JDK imports the VM by a name
+no file search finds, because the launcher loads `server/jvm` by path first; `java.verify` sets aside
+exactly that complaint while the VM is where the launcher looks. One thing held on runners that could
+not be checked here: removing `src.zip`, `include/` and `man/` from inside the macOS bundle's
+`Contents/Home` breaks the bundle's seal and nothing that runs.
+
+**What only runners could say was a refusal, not a floor.** The first `release: false` run of 25 and
+11 failed all four Linux legs: Microsoft links `libz`, `freetype`, X11 and ALSA from the distribution,
+and `relocate.verify` reported each one as reaching outside the tree. That is how every Linux JDK is
+built. Bundling was weighed and refused — a stranger's X11 stack carried forever, and a glibc floor
+raised to the runner's for `libz` alone — so the index schema gained an optional `requires.libraries`,
+filled from each binary's own `DT_NEEDED` rather than from `ldd`, and a release that links anything
+new is refused until somebody has read what it is. The second run was green on all twelve legs, and
+the floors it measured are glibc 2.17 on aarch64, 2.7 to 2.9 on x86_64, and macOS 11.0 on both
+architectures of every line.
+
+**One sentence of the spec was wrong in the direction a sample makes you wrong.** `man/` was written
+down as a property of 11 and 17 after downloading those two; the published manifests show it on 21's
+Unix cells as well, and none on 25.
+
 ---
 
 ## The index

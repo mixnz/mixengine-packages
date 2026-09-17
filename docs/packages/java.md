@@ -41,7 +41,7 @@ About 54–59 MB of every cell, and nothing a process in the JDK reads:
   pointed at this JDK shows decompiled classes instead.
 - **`include/`** — `jni.h` and its siblings, which a C compiler building JNI code reads.
 - **`lib/jvm.lib` and `lib/jawt.lib`**, on Windows — import libraries for a linker.
-- **`man/`**, on the Unix cells of 11 and 17 — 21 and 25 ship none, and Windows never has.
+- **`man/`**, on the Unix cells of 11, 17 and 21 — 25 ships none, and Windows never has.
 
 **`jmods/` stays**, 80–90 MB of it, because `jlink` reads it and `jlink` is in the archive. So do the
 CDS archives — four on 25, which added compact object headers — and `ct.sym`, which `javac --release`

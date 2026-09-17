@@ -127,6 +127,19 @@ Every cell borrowed from go.dev and none empty. The floor is 1.21 because that i
 became a three-part version and the `go` command learned `GOTOOLCHAIN`, which MixEngine sets to
 `local` so a pinned version stays the one that builds.
 
+### [Java](docs/packages/java.md)
+
+| Version | macOS aarch64 | macOS x86_64 | Linux x86_64 | Linux aarch64 | Windows x86_64 | Windows aarch64 |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **11** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **17** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **21** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **25** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+LTS lines only, every cell Microsoft Build of OpenJDK — the one publisher with a Windows ARM64 JDK on
+all four, where Temurin has it on 21 alone. The Linux cells name the system libraries they load
+(`libz`, `freetype`, X11, ALSA) in `requires.libraries` rather than carrying them.
+
 ### [Composer](docs/packages/composer.md)
 
 | Version | macOS aarch64 | macOS x86_64 | Linux x86_64 | Linux aarch64 | Windows x86_64 | Windows aarch64 |
@@ -301,7 +314,7 @@ index, so that cell is empty.
   and almost none of it about PHP. Read it before opening any **built** cell.
 - **[Roadmap](docs/roadmap.md)** — where the pipeline stands, and what is left: a PostgreSQL cell
   waiting on an upstream release, and MongoDB, which is evaluated and not yet packed.
-- **[What each task settled](docs/roadmap-history.md)** — the thirty-five that are closed, kept whole
+- **[What each task settled](docs/roadmap-history.md)** — the thirty-six that are closed, kept whole
   and in the order they were written, because what a task found outlasts the fact that it is done.
 
 ## Licences

@@ -31,6 +31,7 @@ about.
 | MariaDB | 10.6 – newest, 6 targets | `mariadb`, `mariadb_deb`, `mariadb_build` | yes — it is where the rule came from |
 | PostgreSQL | 14 – newest, 5 of 6 targets | `postgres`, `postgres_deb` | yes — P7, P7a and P7b, and it is the first row packed under the rule |
 | Go | 1.21 – newest, 6 targets | `go` | yes — P19, measured before it was written |
+| Java | 11, 17, 21, 25, 6 targets | `java` | yes — P20 |
 
 The rule was written **after** MariaDB, because MariaDB is what taught it: three routes to one
 version produced three different feature sets, and fixing that is what
@@ -73,7 +74,7 @@ packs correctly; what they do not do is *choose*, and choosing once is the whole
 
 ## What each task settled
 
-Thirty-five tasks are closed. Each one is kept whole in
+Thirty-six tasks are closed. Each one is kept whole in
 [`roadmap-history.md`](roadmap-history.md), because what a task found is usually worth more than
 the fact that it is finished; this is the index into it, in the order the tasks were written.
 
@@ -122,6 +123,7 @@ the fact that it is finished; this is the index into it, in the order the tasks 
 | Task | What it settled |
 | --- | --- |
 | **P19** | Go: seven lines borrowed whole, and the 112 `testdata` directories that were the only thing standing between it and `borrow.publish`. |
+| **P20** | Java: Microsoft's JDK on four LTS lines because Temurin has no Windows ARM64 on three, and `requires.libraries` for what a Linux JDK expects the machine to have. |
 
 **The index**
 
@@ -212,17 +214,6 @@ anything is added here.
 
 See [the design](superpowers/specs/2026-09-15-mongodb-packaging-design.md) and
 [packages/mongodb.md](packages/mongodb.md#the-shell-is-a-different-package).
-
-### [~] P20 — Java
-
-Microsoft Build of OpenJDK, LTS lines 11, 17, 21 and 25, six cells each, every cell borrowed.
-`tools/java.py` and `build-java.yml` are written, and the Windows x86_64 cells of 11.0.32.1 and
-21.0.12.1 pack, pass `parity.py` and index cleanly on a development machine. What is left is what only
-runners can say — the glibc and macOS floors, and whether the macOS JDK still runs with files removed
-from inside its signed bundle — and then publishing the four lines.
-
-See [the design](superpowers/specs/2026-09-17-java-packaging-design.md) and
-[packages/java.md](packages/java.md).
 
 ---
 

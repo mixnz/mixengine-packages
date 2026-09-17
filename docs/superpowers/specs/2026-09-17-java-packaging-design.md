@@ -122,8 +122,9 @@ one carries debug information**, so nothing is stripped on any cell.
 - **`lib/jvm.lib` and `lib/jawt.lib`**, on the Windows cells only — the import libraries for linking
   native code against `jvm.dll`. The same reason, and `parity.py` names `*.lib` as surplus. The Unix
   cells have no counterpart to remove: there the shared library is its own link target.
-- **`man/`**, on the Unix cells of 11 and 17 — 75 manual pages in two languages on 11.0.32.1 Linux,
-  and none on 21 or 25. A Windows cell has never had them.
+- **`man/`**, on the Unix cells of 11, 17 and 21 — 75 manual pages in two languages on 11.0.32.1
+  Linux, and none on 25. A Windows cell has never had them. (Written first as "11 and 17", from the
+  two lines that had been downloaded; the published 21.0.12.1 manifests say otherwise.)
 
 **`lib/src.zip`, `include/` and `man/` sit under `Contents/Home/` on macOS**, which is inside a signed
 bundle: the tarball carries `Contents/_CodeSignature/CodeResources`. Removing a file from `Home`
@@ -197,7 +198,7 @@ and the machine-readable table that exists is `endoflife.date`, a third-party mi
 ## What is left to measure before a line of the recipe is written
 
 1. ~~Layout of the Unix cells~~ — measured: `jmods/` and `src.zip` are on every cell, macOS wraps the
-   tree in `Contents/Home`, and `man/` exists on the Unix cells of 11 and 17 only.
+   tree in `Contents/Home`, and `man/` exists on the Unix cells of 11, 17 and 21.
 2. ~~Import tables on Windows~~ — measured on x64 25 and ARM64 11: the C runtime is bundled.
 3. The glibc floor of `libjvm.so` on both Linux architectures, and the macOS floor on both — only a
    runner of that OS can read them with `relocate.floor`. The macOS floor came back **11.0** on both

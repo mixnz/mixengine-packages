@@ -16,7 +16,7 @@ and `microsoft-jdk-25.0.0-linux-x64.tar.gz` as a file; the index needs the secon
 
 **What goes is what no process in the JDK reads**, measured before this was written: the 50 MB
 `lib/src.zip` an IDE reads, the JNI `include/` a C compiler reads, the `lib/*.lib` import libraries a
-linker reads, and the `man/` pages the Unix cells of 11 and 17 carry. `jmods/` stays, because `jlink`
+linker reads, and the `man/` pages the Unix cells of 11, 17 and 21 carry. `jmods/` stays, because `jlink`
 reads it and `jlink` is in the archive.
 
 Python 3 stdlib only, by policy: this runs on a GitHub runner with nothing installed.
