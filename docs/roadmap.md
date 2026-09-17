@@ -215,6 +215,16 @@ anything is added here.
 See [the design](superpowers/specs/2026-09-15-mongodb-packaging-design.md) and
 [packages/mongodb.md](packages/mongodb.md#the-shell-is-a-different-package).
 
+### [~] P22 — Meilisearch
+
+The Community Edition binary on five cells, packed on demand from the newest release. `tools/meilisearch.py`
+and `build-meilisearch.yml` are written, and the Windows x86_64 cell of 1.53.2 packs, indexes and
+searches from a moved directory, and passes `parity.py` on a development machine. What is left is the
+four Unix cells' floors, whether a Windows runner's administrator token matters, and the first release.
+
+See [the design](superpowers/specs/2026-09-17-meilisearch-packaging-design.md) and
+[packages/meilisearch.md](packages/meilisearch.md).
+
 ---
 
 ## Working on this file

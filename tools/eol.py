@@ -50,8 +50,8 @@ exists to stop, so ``mongodb`` and ``mongosh`` carry no ``eol`` in the index, as
 ``redis``, ``memcached``, ``nginx`` and ``caddy`` do not. Nor does ``go``: its download catalogue
 flags a release ``stable`` and dates nothing, and its support policy is a sentence — two newer major
 releases end a line — rather than a date. Nor does ``java``: Microsoft and Adoptium both state
-support as prose, and the one machine-readable table is ``endoflife.date``, a mirror. The absence is
-a decision; only this sentence can tell a
+support as prose, and the one machine-readable table is ``endoflife.date``, a mirror. Nor does ``meilisearch``,
+which has no LTS, no maintained lines and no support policy at all. The absence is a decision; only this sentence can tell a
 reader that.
 
 Four decisions this file is answerable for.
