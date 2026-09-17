@@ -86,13 +86,20 @@ something it is not. If upstream ever publishes checksums of its own, the recipe
 
 ## What the rule takes out
 
-**Nothing can be taken out of one file, and something might still have to be.** The Community binaries
-were 116–127 MB in `v1.53.1` (2026-08-13) and **326–335 MB in `v1.53.2`** (2026-09-07), a patch
-release, on every target at once. Cargo's `release-with-debug` profile sets `debug = true`; a
-2.7-times jump in a patch release on every platform is the size DWARF makes. This is a hypothesis, not
-a measurement, and it is the first thing on the list below. If it holds, `strip.py` removes it and
-declares it in `upstream.changed`, exactly as P6b and P4b settled for every other row, and the
-artifact is levelled back to the size of the binaries before it.
+**Nothing can be taken out of one file, and nothing has to be.** The Community binaries were 116–127 MB
+in `v1.53.1` (2026-08-13) and **326–335 MB in `v1.53.2`** (2026-09-07), a patch release, on every
+target at once. This document first guessed that was DWARF. **It is not, and the guess was measured
+before a line of the recipe was written:** reading the section headers of the Linux x86_64 binaries of
+both releases, `strip.debug_sections` finds no debug information in either, and the whole difference
+is `.rodata` — **77.2 MB in 1.53.1 against 296.1 MB in 1.53.2** — while `.text` stays at 36 MB. The
+Windows executable says the same thing in its own format: `.rdata` is 303.5 MB of 346.6. The same
+release updated `charabia`, Meilisearch's tokenizer, to 0.10.0, and data the program embeds and reads
+is exactly what a binary is allowed to carry.
+
+It also costs less than it looks: **350.3 MB of 1.53.2 compresses to 97.0 MB**, against 92.1 MB for
+1.53.1's 133.1 MB, measured with gzip at level 6 — the added bytes are dictionaries, and dictionaries
+compress. So there is nothing to strip and nothing to declare in `upstream.changed`, and the artifact is
+about 100 MB a cell.
 
 ## What the artifact promises
 
@@ -109,21 +116,26 @@ smoke       { relocated: true, ran: [...] }
 ```
 
 - **The upstream asset is a bare executable, not an archive**, so the artifact is that one file under
-  the name `meilisearch[.exe]`, beside the manifest and `LICENSES.md`. Composer's phar set the
+  the name `meilisearch[.exe]`, beside the manifest and the licence. Composer's phar set the
   precedent for a payload that has no layout to preserve; renaming the platform suffix off the file is
-  the least that makes `provides` the same on every cell.
+  the least that makes `provides` the same on every cell. Unlike Composer, the payload is MIT and the
+  MIT licence requires its text to travel with it, so **`LICENSE-MIT` is fetched from the release's own
+  tag** and declared in `upstream.added`.
+- **`requires.vcredist` is `2022` on Windows**: `meilisearch.exe` imports `VCRUNTIME140.dll` and the
+  release ships nothing beside it — measured off the import table of 1.53.2.
 - **Meilisearch sends anonymous analytics by default.** The daemon should start it with
   `--no-analytics` (or `MEILI_NO_ANALYTICS=true`). Named here because it is a fact about this binary
   that a user of a local environment would not expect.
-- **A data directory belongs to the version that wrote it.** Opening one with a different minor is
-  refused unless an upgrade is asked for, and there is no downgrade. So a MixEngine project that changes
-  its pinned minor has a migration to run, not just a binary to swap. The exact behaviour — which flag,
-  from which version, and what it refuses — is measured before this contract is final.
+- **A data directory belongs to the version that wrote it.** Meilisearch's own upgrade guide says a
+  database is compatible only with the version that created it. The in-place upgrade is the
+  **`--upgrade-db`** flag from **1.51**, `--experimental-dumpless-upgrade` before it, and a database
+  older than 1.12 cannot be upgraded that way at all and needs a dump. So a MixEngine project that
+  changes its pinned version has a migration to start, not just a binary to swap.
 
 ## Licence
 
-MIT for the Community Edition binary, as above. `LICENSES.md` says which edition and quotes the
-`LICENSE-MIT` text; the absence of `LICENSE-EE` in the artifact is the point.
+MIT for the Community Edition binary, as above. The artifact carries `LICENSE-MIT` from the release
+tag, and the absence of `LICENSE-EE` in it is the point.
 
 ## No end-of-life dates, on purpose
 
@@ -146,14 +158,12 @@ then stop the process and confirm it is gone.
 
 ## What is left to measure before a line of the recipe is written
 
-1. What the 210 MB added in `v1.53.2` is: DWARF, a symbol table, or something embedded — and whether
-   stripping it leaves a binary whose loader view is unchanged.
-2. The minimum macOS on both architectures, and the glibc floor on both Linux ones.
-3. The Windows import table, for `vcredist`.
-4. The data-directory rule across minors: which version introduced the in-place upgrade, what flag it
-   takes today, and the exact refusal a downgrade prints.
+1. ~~What the 210 MB is~~ — measured: embedded read-only data, no DWARF; see *What the rule takes out*.
+2. The minimum macOS on both architectures, and the glibc floor on both Linux ones — a runner's job.
+3. ~~The Windows import table~~ — measured: `VCRUNTIME140.dll`, so `vcredist` 2022.
+4. ~~The data-directory rule~~ — read off the upgrade guide: `--upgrade-db` from 1.51.
 5. Whether a Windows runner's administrator token changes anything, since P12a found that it did for
-   PostgreSQL.
+   PostgreSQL — the first CI run says.
 
 ## The task
 
