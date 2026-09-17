@@ -187,3 +187,119 @@ def describe(
         "provides": {"meilisearch": name},
     }
     return borrow.declare(tree, manifest, added=added, changed=changed)
+
+
+def free_port() -> int:
+    """A port nothing is listening on, as the kernel's own answer — racy, and better than 7700."""
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+def call(url: str, body: object | None = None, timeout: float = 10) -> dict:
+    """One JSON request to the server under test, answering with the decoded body."""
+    data = None if body is None else json.dumps(body).encode("utf-8")
+    request = urllib.request.Request(url, data=data, method="GET" if body is None else "POST",
+                                     headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read())
+
+
+def smoke(tree: Path, version: str, manifest: dict) -> dict:
+    """Run the artifact from somewhere it has never been, and make it be a search engine there.
+
+    `--version` proves a binary. What a daemon will do is start it, wait for it to be healthy, and
+    then use it — so the test indexes one document, waits for the task that does it, and finds the
+    document again, which is the only step that exercises what the 296 MB of embedded tokenizer data
+    in 1.53.2 is for.
+
+    `--env development` so no master key is needed, `--no-analytics` because a smoke test must not
+    report home, and every path the server writes — the database, dumps, snapshots — under a
+    temporary directory, so nothing lands in the runner's working directory.
+    """
+    elsewhere = borrow.moved(tree)
+    problems = relocate.verify(elsewhere, directories=("",))
+    for problem in problems:
+        print(f"error: {problem}", file=sys.stderr)
+    if problems:
+        raise SystemExit("the relocated tree reaches outside itself")
+
+    binary = elsewhere / manifest["provides"]["meilisearch"]
+    path = borrow.clean_path(binary.parent)
+    banner = borrow.run(binary, "--version", path=path, drop=("MEILI",))
+    if banner != f"meilisearch {version}":
+        raise SystemExit(f"meilisearch reports {banner!r}, expected 'meilisearch {version}'")
+
+    work = borrow.long_name(Path(tempfile.mkdtemp(prefix="mixengine-meili-")))
+    port = free_port()
+    base = f"http://127.0.0.1:{port}"
+    log = work / "meilisearch.log"
+    environment = {key: value for key, value in os.environ.items() if not key.startswith("MEILI")}
+    environment["PATH"] = path
+    with log.open("wb") as sink:
+        process = subprocess.Popen(
+            [str(binary), "--db-path", str(work / "data.ms"), "--http-addr", f"127.0.0.1:{port}",
+             "--env", "development", "--no-analytics",
+             "--dump-dir", str(work / "dumps"), "--snapshot-dir", str(work / "snapshots")],
+            stdout=sink, stderr=subprocess.STDOUT, env=environment, cwd=str(work),
+        )
+
+    def said() -> str:
+        return log.read_text(encoding="utf-8", errors="replace")[-3000:]
+
+    try:
+        deadline = time.monotonic() + 120
+        while True:
+            if process.poll() is not None:
+                raise SystemExit(f"meilisearch exited {process.returncode} before it was healthy\n{said()}")
+            try:
+                if call(f"{base}/health", timeout=2).get("status") == "available":
+                    break
+            except (urllib.error.URLError, TimeoutError, ConnectionError, OSError, ValueError):
+                pass
+            if time.monotonic() > deadline:
+                raise SystemExit(f"{base}/health never answered available\n{said()}")
+            time.sleep(0.5)
+
+        reported = call(f"{base}/version").get("pkgVersion")
+        if reported != version:
+            raise SystemExit(f"GET /version reports {reported!r}, expected {version}")
+
+        queued = call(f"{base}/indexes/smoke/documents",
+                      [{"id": 1, "title": f"mixengine meilisearch {version}"}])
+        task = queued["taskUid"]
+        deadline = time.monotonic() + 120
+        while True:
+            status = call(f"{base}/tasks/{task}").get("status")
+            if status == "succeeded":
+                break
+            if status in ("failed", "canceled") or time.monotonic() > deadline:
+                raise SystemExit(f"indexing task {task} ended {status!r}\n{said()}")
+            time.sleep(0.5)
+
+        hits = call(f"{base}/indexes/smoke/search", {"q": "mixengine"}).get("hits", [])
+        if [hit.get("id") for hit in hits] != [1]:
+            raise SystemExit(f"searching for the indexed document found {hits!r}")
+
+        process.terminate()
+        try:
+            process.wait(timeout=60)
+        except subprocess.TimeoutExpired:
+            raise SystemExit("meilisearch did not exit after being asked to stop") from None
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=30)
+
+    borrow.discard(elsewhere)
+    shutil.rmtree(work, ignore_errors=True)
+    name = manifest["provides"]["meilisearch"]
+    return {
+        "relocated": True,
+        "ran": [
+            f"{name} --version",
+            f"{name} --env development --no-analytics, GET /health and GET /version",
+            "a document added, its indexing task succeeded, and a search found it",
+            "the server stopped",
+        ],
+    }
