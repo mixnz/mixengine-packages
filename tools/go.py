@@ -282,3 +282,69 @@ def smoke(tree: Path, version: str, manifest: dict, target: tuple[str, str]) -> 
             f"{manifest['provides']['gofmt']} -l",
         ],
     }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--version", required=True,
+        help="a line (1.27), an exact version (1.27.1), or 'latest'. 1.21 upwards.",
+    )
+    parser.add_argument("--out", default="dist", type=Path)
+    args = parser.parse_args()
+
+    target = borrow.host("Go")
+    version, filename, expected = resolve(args.version, target)
+    if version != args.version:
+        print(f"{args.version} resolved to {version}")
+    eol.announce("go", version)
+
+    goos, goarch, suffix = TARGETS[target]
+    url = f"{DOWNLOAD}/{filename}"
+    work = Path(tempfile.mkdtemp(prefix="mixengine-go-"))
+    downloaded = work / filename
+    print(f"borrowing {url}")
+    try:
+        urllib.request.urlretrieve(url, downloaded)
+    except urllib.error.HTTPError as error:
+        raise SystemExit(f"{url} answered {error.code}") from error
+
+    actual = borrow.sha256(downloaded)
+    if actual != expected:
+        raise SystemExit(f"sha256 mismatch: got {actual}, go.dev states {expected}")
+    print(f"sha256 {actual} (verified against go.dev's download catalogue)")
+
+    tree = borrow.unpack(downloaded, work / "unpacked", suffix)
+    removed = prune(tree)
+
+    # Asked before anything is stripped, because `strip.debug` rewrites whatever carries DWARF and
+    # these have to stay upstream's bytes: they are linked into every -race or BoringCrypto program
+    # a user builds. None carried any on Windows; a cell that differs stops here for a decision.
+    debugged = [path.relative_to(tree).as_posix() for path in sorted(tree.rglob("*.syso"))
+                if strip.debug_sections(path)]
+    if debugged:
+        raise SystemExit(
+            f"{', '.join(debugged)} carry debug information. They are not stripped; declare them "
+            f"in `keeps` with that reason — see the spec — before this cell can be packed."
+        )
+    # Expected to change nothing: the Windows evaluation found no DWARF in `bin/` or `pkg/tool/`.
+    # Called anyway, so a cell that differs is declared rather than refused.
+    changed = strip.debug(tree)
+
+    manifest = describe(tree, version, target, url, actual, removed, changed)
+    manifest["smoke"] = smoke(tree, version, manifest, target)
+
+    # Measured off the binaries rather than assumed: on Linux the distributed `go` is expected to be
+    # static, which `relocate.floor` answers as None rather than as a floor of zero.
+    measured = relocate.floor(tree, directories=("bin", f"pkg/tool/{goos}_{goarch}")) \
+        if sys.platform != "win32" else None
+    if measured:
+        manifest["requires"] = {measured[0]: measured[1]}
+        print(f"needs {measured[0]} {measured[1]} or newer")
+
+    borrow.publish(tree, manifest, args.out, suffix)
+    shutil.rmtree(work, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    main()
