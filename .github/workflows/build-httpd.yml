@@ -1,0 +1,91 @@
+name: build httpd
+
+# Asked for, never automatic — the same rule every other workflow here keeps, for the same reason:
+# upstream releases on its own schedule and a human decides which version is wanted.
+#
+# **Six cells and every one compiled**, because the Apache Software Foundation publishes source only
+# and the Windows build everybody uses — Apache Lounge's — is not a borrow this repository can make:
+# digests on request by mail, one build kept at a time, a date suffix that rebuilds one version into
+# several programs, and no ARM64. The evaluation is in the P23 spec. Two recipes, as MariaDB has:
+# `tools/httpd.py` configures and makes on the four Unix cells, `tools/httpd_build.py` drives MSVC
+# and upstream's CMake builds on both Windows architectures.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "httpd line (2.4), exact version (2.4.68), or 'latest'."
+        required: true
+        type: string
+      release:
+        description: 'Publish as a GitHub release. Off means build and keep the artifacts for inspection only.'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  pack:
+    # Every leg runs on the operating system and architecture it packs for — a compiler's requirement
+    # as well as the smoke test's. Linux on 22.04 for the glibc floor, as in every built row here.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-22.04,     os: linux,   arch: x86_64,  recipe: httpd.py }
+          - { runner: ubuntu-22.04-arm, os: linux,   arch: aarch64, recipe: httpd.py }
+          - { runner: macos-14,         os: macos,   arch: aarch64, recipe: httpd.py }
+          - { runner: macos-15-intel,   os: macos,   arch: x86_64,  recipe: httpd.py }
+          - { runner: windows-2022,     os: windows, arch: x86_64,  recipe: httpd_build.py }
+          - { runner: windows-11-arm,   os: windows, arch: aarch64, recipe: httpd_build.py }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: build and pack
+        # bash on every leg so the exit code is read the same way everywhere. Nothing here exits 75:
+        # every cell is built, so a cell that does not pack is a failure.
+        shell: bash
+        run: python -u "tools/${{ matrix.recipe }}" --version "${{ inputs.version }}" --out dist
+        # OpenSSL from source is most of the wall clock on every leg, and on Windows it is `nmake`,
+        # which builds one file at a time.
+        timeout-minutes: 150
+      - uses: actions/upload-artifact@v4
+        with:
+          name: httpd-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    # One release per exact version, holding every artifact of it — the version read back out of
+    # each manifest rather than taken from the input.
+    needs: pack
+    if: ${{ inputs.release && !failure() && !cancelled() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: incoming, merge-multiple: true }
+      - name: publish one release per version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          versions=$(jq -r '.version' incoming/*.json | sort -u)
+          for version in $versions; do
+            tag="httpd-$version"
+            assets=()
+            for manifest in incoming/*.json; do
+              [ "$(jq -r '.version' "$manifest")" = "$version" ] || continue
+              assets+=("${manifest%.json}" "$manifest")
+            done
+            echo "== $tag: ${#assets[@]} artifact(s)"
+            if ! gh release view "$tag" >/dev/null 2>&1; then
+              gh release create "$tag" \
+                --title "Apache httpd $version" \
+                --notes "Relocatable Apache httpd $version for MixEngine, compiled from the Apache Software Foundation's source release against the SHA-512 published beside it, on all six cells: macOS and Linux on both architectures with configure and make, Windows on x86_64 and ARM64 with MSVC and upstream's CMake builds. APR, APR-util, OpenSSL, PCRE2, zlib, nghttp2 and expat are pinned versions built from source — static on Unix, DLLs beside httpd.exe on Windows, where the Visual C++ redistributable is a declared requirement. One module set on every cell, every module shared: serving, rewrite, access_compat for .htaccess files written for 2.2, proxy_fcgi for PHP, ssl and http2; no mod_php anywhere. Every artifact was run as a web server from a directory it had been moved to before being published — started with -d <archive> -f <rendered conf>, every module loaded, a static file served, a path rewritten by .htaccess under Order allow,deny and deflated, and the server stopped with httpd -k stop — see mixengine-artifact.json inside each one for what was proven."
+            fi
+            gh release upload "$tag" "${assets[@]}" --clobber
+          done

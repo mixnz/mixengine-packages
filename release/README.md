@@ -93,6 +93,7 @@ command above.
 | `meilisearch` | `release/build.sh meilisearch 1.53.2` | an exact version, a minor, or `latest` — packed on demand, never back-filled |
 | `caddy` | `release/build.sh caddy latest` | a line, an exact version, or `latest` |
 | `nginx` | `release/build.sh nginx 1.30` | `1.30` is stable, `1.31` is mainline |
+| `httpd` | `release/build.sh httpd 2.4` | a line, an exact version, or `latest`; every cell compiled |
 | `redis` | `release/build.sh redis 8.10` | a line, an exact version, or `latest` |
 | `valkey` | `release/build.sh valkey 9.1` | a line, an exact version, or `latest`; 7.2 upwards |
 | `memcached` | `release/build.sh memcached 1.6` | a line, an exact version, or `latest` |

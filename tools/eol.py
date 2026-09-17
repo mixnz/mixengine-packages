@@ -52,7 +52,8 @@ flags a release ``stable`` and dates nothing, and its support policy is a senten
 releases end a line — rather than a date. Nor does ``java``: Microsoft and Adoptium both state
 support as prose, and the one machine-readable table is ``endoflife.date``, a mirror. Nor does
 ``meilisearch``, which has no LTS, no maintained lines and no support policy at all, nor ``valkey``,
-whose download page lists the newest release of each major and states no policy or date. The absence
+whose download page lists the newest release of each major and states no policy or date, nor
+``httpd``, whose one line has no published schedule. The absence
 is a decision; only this sentence can tell a
 reader that.
 
