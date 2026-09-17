@@ -373,3 +373,80 @@ def smoke(tree: Path, version: str, manifest: dict, target: tuple[str, str]) -> 
             f"{provides['jlink']} --add-modules java.base, and the linked runtime's java --version",
         ],
     }
+
+
+def published_hash(checksums_url: str, archive_name: str) -> str:
+    """The SHA-256 in Microsoft's ``.sha256sum.txt`` beside the archive: ``<digest>  <name>``."""
+    text = borrow.fetch(checksums_url, headers=AGENT).decode("utf-8", "replace")
+    for line in text.splitlines():
+        digest, _, name = line.strip().partition("  ")
+        if name.strip().lstrip("*") == archive_name and len(digest) == 64:
+            return digest.lower()
+    raise SystemExit(f"{checksums_url} states no SHA-256 for {archive_name}: {text[:200]!r}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--version", required=True,
+        help="an LTS line (21), an exact version (21.0.12.1), or 'latest'. 11 upwards.",
+    )
+    parser.add_argument("--out", default="dist", type=Path)
+    args = parser.parse_args()
+
+    target = borrow.host("Java")
+    operating_system = target[0]
+    entry = resolve(args.version, target)
+    version = entry["version"]
+    if version != args.version:
+        print(f"{args.version} resolved to {version} ({entry['release']})")
+    eol.announce("java", version)
+
+    suffix = TARGETS[target][3]
+    archive_name = entry["url"].rsplit("/", 1)[-1]
+    stated = published_hash(entry["checksums"], archive_name)
+    if stated != entry["sha256"]:
+        raise SystemExit(
+            f"Microsoft's two statements of {archive_name} disagree: the marketplace entry says "
+            f"{entry['sha256']}, the .sha256sum.txt beside it says {stated}"
+        )
+
+    work = Path(tempfile.mkdtemp(prefix="mixengine-java-"))
+    downloaded = work / archive_name
+    print(f"borrowing {entry['url']}")
+    try:
+        urllib.request.urlretrieve(entry["url"], downloaded)
+    except urllib.error.HTTPError as error:
+        raise SystemExit(f"{entry['url']} answered {error.code}") from error
+
+    actual = borrow.sha256(downloaded)
+    if actual != entry["sha256"]:
+        raise SystemExit(f"sha256 mismatch: got {actual}, Microsoft states {entry['sha256']}")
+    print(f"sha256 {actual} (verified against the marketplace entry and .sha256sum.txt)")
+
+    tree = borrow.unpack(downloaded, work / "unpacked", suffix)
+    removed = prune(tree, operating_system)
+    # Expected to change nothing: no binary of any cell measured before this was written carried
+    # debug information. Called anyway, so a cell that differs is declared rather than refused.
+    changed = strip.debug(tree)
+
+    manifest = describe(tree, entry, target, removed, changed)
+    manifest["smoke"] = smoke(tree, version, manifest, target)
+
+    if operating_system == "windows":
+        needed = vcredist(tree)
+        if needed:
+            manifest["requires"] = {"vcredist": needed}
+            print(f"needs the Visual C++ {needed} redistributable")
+    else:
+        measured = relocate.floor(tree, directories=directories(operating_system))
+        if measured:
+            manifest["requires"] = {measured[0]: measured[1]}
+            print(f"needs {measured[0]} {measured[1]} or newer")
+
+    borrow.publish(tree, manifest, args.out, suffix)
+    shutil.rmtree(work, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    main()
