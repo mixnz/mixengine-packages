@@ -73,6 +73,28 @@ REMOVED = ("lib/src.zip", "include", "man")
 
 COMMANDS = ("java", "javac", "jar", "jshell", "keytool", "jlink")
 
+# What the smoke test compiles. Only APIs from 11, the oldest line: `Runtime.version()` is 9 and
+# `HexFormat` would be 17, so the hex is spelled out.
+PROGRAM = """import java.security.MessageDigest;
+
+public class Hello {
+    public static void main(String[] args) throws Exception {
+        byte[] digest = MessageDigest.getInstance("SHA-256").digest("mixengine".getBytes("UTF-8"));
+        StringBuilder hex = new StringBuilder();
+        for (byte b : digest) {
+            hex.append(String.format("%02x", b));
+        }
+        System.out.println(System.getProperty("java.home"));
+        System.out.println(Runtime.version().version());
+        System.out.println(hex);
+    }
+}
+"""
+
+# Environment the runner image sets for its own JDK, removed before anything runs: a moved JDK that
+# only works because `JAVA_HOME` points at the runner's is not a JDK anybody else can use.
+FOREIGN = ("JAVA", "JDK_", "_JAVA", "CLASSPATH")
+
 
 def lines() -> list[int]:
     """The LTS lines at or above the floor, newest last, as Adoptium's release document states them.
@@ -241,3 +263,113 @@ def describe(
         "provides": provides,
     }
     return borrow.declare(tree, manifest, removed=removed, changed=changed)
+
+
+def directories(operating_system: str) -> tuple[str, ...]:
+    """Where the machine code of this cell is, for `relocate.verify` and `relocate.floor`."""
+    if operating_system == "macos":
+        return (f"{MACOS_HOME}/bin", f"{MACOS_HOME}/lib", "Contents/MacOS")
+    return ("bin", "lib")
+
+
+# The VM itself, relative to the home, per OS.
+JVM = {
+    "windows": "bin/server/jvm.dll",
+    "linux": "lib/server/libjvm.so",
+    "macos": "lib/server/libjvm.dylib",
+}
+
+
+def verify(tree: Path, operating_system: str) -> list[str]:
+    """`relocate.verify`, less the one reference a JDK resolves in a way no file search can model.
+
+    **Every library in a JDK imports the VM by bare name and none of them can find it by searching.**
+    Measured on 25.0.4.1 for Windows x64: `java.dll`, `net.dll`, `zip.dll` and nine more import
+    `jvm.dll`, which is in `bin/server/`, a directory no DLL search order includes. They work because
+    the launcher loads the VM **by path** before it loads any of them — `jli` reads `lib/jvm.cfg`,
+    picks `server`, and `LoadLibrary`s that file — and a loader asked for a module already in the
+    process answers with that one. The same is true of `libjvm` on Unix.
+
+    So exactly that complaint is set aside, and only when the VM is where the launcher will look for
+    it. Every other unresolved or escaping reference still fails the check, including one to the VM
+    from a tree whose `server/` is missing it.
+    """
+    prefix = home(tree, operating_system)
+    vm = tree / f"{prefix}{JVM[operating_system]}"
+    problems = relocate.verify(tree, directories=directories(operating_system))
+    if not vm.is_file():
+        return problems + [f"the VM is not at {prefix}{JVM[operating_system]}, where the launcher loads it"]
+    unresolved_vm = re.compile(rf"[^:]+: (?:\S*/)?{re.escape(vm.name)} does not resolve")
+    return [problem for problem in problems if not unresolved_vm.fullmatch(problem)]
+
+
+def smoke(tree: Path, version: str, manifest: dict, target: tuple[str, str]) -> dict:
+    """Run the JDK from somewhere it has never been, and make every provided command do its job.
+
+    `java --version` alone proves a launcher. What breaks in a moved JDK is everything found relative
+    to it — `lib/modules`, the CDS archives, `lib/security/cacerts`, `jmods/` — so each is reached by
+    the command that reads it: `javac` and `java` compile and run a program that reports its own
+    `java.home` and version, `keytool` lists the CA certificates a TLS connection would trust, and
+    `jlink` builds a runtime out of `jmods/` that itself has to start.
+    """
+    operating_system = target[0]
+    elsewhere = borrow.moved(tree)
+
+    problems = verify(elsewhere, operating_system)
+    for problem in problems:
+        print(f"error: {problem}", file=sys.stderr)
+    if problems:
+        raise SystemExit("the relocated tree reaches outside itself")
+
+    provides = manifest["provides"]
+    java = elsewhere / provides["java"]
+    path = borrow.clean_path(java.parent)
+    work = borrow.long_name(Path(tempfile.mkdtemp(prefix="mixengine-java-")))
+
+    def run(program: Path, *args: str) -> str:
+        return borrow.run(program, *args, path=path, drop=FOREIGN)
+
+    banner = run(java, "--version")
+    if "Microsoft" not in banner:
+        raise SystemExit(f"java --version does not name Microsoft's build:\n{banner}")
+
+    source = work / "Hello.java"
+    source.write_text(PROGRAM, encoding="utf-8", newline="\n")
+    classes = work / "classes"
+    run(elsewhere / provides["javac"], "-d", str(classes), str(source))
+    said = run(java, "-cp", str(classes), "Hello").splitlines()
+
+    stated = list(borrow.parts(version))
+    while len(stated) > 1 and stated[-1] == 0:
+        stated.pop()
+    expected = [str(Path(java).parent.parent), str(stated), hashlib.sha256(b"mixengine").hexdigest()]
+    if len(said) != 3 or said[1:] != expected[1:] or not Path(said[0]).samefile(expected[0]):
+        raise SystemExit(f"the compiled program printed {said}, expected {expected}")
+
+    for name in ("jar", "jshell"):
+        run(elsewhere / provides[name], "--version")
+
+    listed = run(elsewhere / provides["keytool"], "-list", "-cacerts", "-storepass", "changeit")
+    trusted = re.search(r"contains (\d+) entr", listed)
+    if not trusted or int(trusted.group(1)) == 0:
+        raise SystemExit(f"keytool found no CA certificates in the moved JDK:\n{listed[:400]}")
+
+    runtime = work / "runtime"
+    run(elsewhere / provides["jlink"], "--add-modules", "java.base", "--output", str(runtime))
+    linked = runtime / "bin" / java.name
+    run(linked, "--version")
+
+    borrow.discard(elsewhere)
+    shutil.rmtree(work, ignore_errors=True)
+    return {
+        "relocated": True,
+        "ran": [
+            f"{provides['java']} --version, naming Microsoft",
+            f"{provides['javac']} and {provides['java']}: a program reporting java.home, "
+            "Runtime.version() and a SHA-256",
+            f"{provides['jar']} --version",
+            f"{provides['jshell']} --version",
+            f"{provides['keytool']} -list -cacerts: {trusted.group(1)} CA certificates",
+            f"{provides['jlink']} --add-modules java.base, and the linked runtime's java --version",
+        ],
+    }
