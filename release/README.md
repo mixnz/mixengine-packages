@@ -90,6 +90,7 @@ command above.
 | `ruby` | `release/build.sh ruby 3.4` | a line, an exact version, or `latest` |
 | `go` | `release/build.sh go 1.27` | a line, an exact version, or `latest`; 1.21 upwards |
 | `java` | `release/build.sh java 21` | an LTS line, an exact version, or `latest`; 11, 17, 21, 25 |
+| `meilisearch` | `release/build.sh meilisearch 1.53.2` | an exact version, a minor, or `latest` — packed on demand, never back-filled |
 | `caddy` | `release/build.sh caddy latest` | a line, an exact version, or `latest` |
 | `nginx` | `release/build.sh nginx 1.30` | `1.30` is stable, `1.31` is mainline |
 | `redis` | `release/build.sh redis 8.10` | a line, an exact version, or `latest` |

@@ -1,0 +1,118 @@
+name: build meilisearch
+
+# Asked for, never automatic — the same rule every other workflow here keeps, and it matters most
+# here: Meilisearch ships a minor about every two weeks, and every release packed stays in the
+# archive forever. A human decides which releases are worth that.
+#
+# **Five legs, because upstream builds five cells.** There is no Windows ARM64 leg: Meilisearch has
+# never published a Windows binary for anything but x86_64. A release missing one of the five —
+# v1.53.2 has no macOS x86_64 binary — exits 75 on that leg and publishes the other four.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Exact version (1.53.2), a minor (1.53) for its newest release, or 'latest'."
+        required: true
+        type: string
+      release:
+        description: 'Publish as a GitHub release. Off means build and keep the artifacts for inspection only.'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  pack:
+    # Every leg runs on the operating system and architecture it packs for, because the recipe
+    # smoke-tests what it packed — it moves the tree to a directory it has never seen and makes the
+    # server there start, index a document and find it again.
+    # Cross-packing would be a download and a rename, and would prove nothing.
+    #
+    # **Linux is on the newest image**, as Node's is: the binary is upstream's, and the glibc floor it
+    # carries is read off it rather than decided by the runner.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: windows-2022,     os: windows, arch: x86_64 }
+          - { runner: macos-14,         os: macos,   arch: aarch64 }
+          - { runner: macos-15-intel,   os: macos,   arch: x86_64 }
+          - { runner: ubuntu-24.04,     os: linux,   arch: x86_64 }
+          - { runner: ubuntu-24.04-arm, os: linux,   arch: aarch64 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: borrow and repack
+        id: pack
+        # bash on every leg, Windows included, so the exit code is read the same way everywhere.
+        #
+        # 75 is "upstream builds nothing for this target", which is an empty cell of the table and
+        # not a failure — and on this row it happens: v1.53.2 publishes no macOS x86_64 binary.
+        # Every other non-zero code is a real failure and is passed on.
+        #
+        # GH_TOKEN because the recipe resolves a version against the GitHub releases API, whose
+        # unauthenticated limit runners share.
+        #
+        # -u because a failure is diagnosed from the log, and block-buffered stdout arrives after
+        # the traceback that explains it.
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # `|| code=$?` rather than reading `$?` on the next line: GitHub runs `shell: bash` with
+          # `-e`, so a non-zero exit ends the step before anything can look at the code.
+          code=0
+          python -u tools/meilisearch.py --version "${{ inputs.version }}" --out dist || code=$?
+          if [ "$code" -eq 75 ]; then
+            echo "::notice::no Meilisearch ${{ inputs.version }} for ${{ matrix.os }}/${{ matrix.arch }}; nothing to pack"
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          exit "$code"
+        timeout-minutes: 30
+      - uses: actions/upload-artifact@v4
+        if: steps.pack.outputs.skipped != 'true'
+        with:
+          name: meilisearch-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    # One release per exact version, holding every artifact of it. The version is read back out of
+    # each manifest rather than taken from the input, because the input may be a line or `latest`
+    # and each leg resolves it against the GitHub releases API independently. If two legs disagree they land in
+    # different releases, which is the honest outcome rather than a mislabelled asset.
+    needs: pack
+    if: ${{ inputs.release && !failure() && !cancelled() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: incoming, merge-multiple: true }
+      - name: publish one release per version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          versions=$(jq -r '.version' incoming/*.json | sort -u)
+          for version in $versions; do
+            tag="meilisearch-$version"
+            assets=()
+            for manifest in incoming/*.json; do
+              [ "$(jq -r '.version' "$manifest")" = "$version" ] || continue
+              # Both halves: the manifest is what the index generator reads, so a release holding
+              # only the archive is a release the index cannot be rebuilt from.
+              assets+=("${manifest%.json}" "$manifest")
+            done
+            echo "== $tag: ${#assets[@]} artifact(s)"
+            if ! gh release view "$tag" >/dev/null 2>&1; then
+              gh release create "$tag" \
+                --title "Meilisearch $version" \
+                --notes "Relocatable Meilisearch $version Community Edition for MixEngine, repacked from meilisearch/meilisearch under MIT. Every artifact started, indexed a document and found it again from a directory it had been moved to before being published — see mixengine-artifact.json inside each one for what was proven."
+            fi
+            gh release upload "$tag" "${assets[@]}" --clobber
+          done
