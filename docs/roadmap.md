@@ -217,10 +217,16 @@ See [the design](superpowers/specs/2026-09-15-mongodb-packaging-design.md) and
 
 ### [~] P22 — Meilisearch
 
-The Community Edition binary on five cells, packed on demand from the newest release. `tools/meilisearch.py`
-and `build-meilisearch.yml` are written, and the Windows x86_64 cell of 1.53.2 packs, indexes and
-searches from a moved directory, and passes `parity.py` on a development machine. What is left is the
-four Unix cells' floors, whether a Windows runner's administrator token matters, and the first release.
+The Community Edition binary on five cells, packed on demand from the newest release.
+`tools/meilisearch.py` and `build-meilisearch.yml` are written, and a `release: false` run of 1.53.2 on
+2026-09-17 was green: four cells packed, indexed and searched from a moved directory and agree under
+`parity.py` — glibc 2.35 on Linux, macOS 11.0 on Apple Silicon, the VC++ 2022 redistributable on
+Windows, and a Windows runner's administrator token changed nothing.
+
+**Held on purpose, not blocked.** v1.53.2 publishes no macOS x86_64 binary, and the first release of
+this row was not going to be one with a hole in it. The next upstream release that has all five cells
+is the one to pack — `release/build.sh meilisearch <version>`, then `release/publish.sh` — and packing
+it closes this task.
 
 See [the design](superpowers/specs/2026-09-17-meilisearch-packaging-design.md) and
 [packages/meilisearch.md](packages/meilisearch.md).
