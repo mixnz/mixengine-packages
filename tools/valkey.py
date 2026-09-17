@@ -51,6 +51,51 @@ AGENT = redis.AGENT
 # The oldest line: the one Valkey forked, and still patched upstream.
 FLOOR = (7, 2)
 
+SUFFIX = ".exe" if sys.platform == "win32" else ""
+
+# The four names the Redis row provides, in Valkey's spelling. The check tools are copies of the
+# server that pick their behaviour from `argv[0]`, which upstream's own rules make.
+LAYOUT = {
+    name: f"bin/{name}{SUFFIX}"
+    for name in ("valkey-server", "valkey-cli", "valkey-check-rdb", "valkey-check-aof")
+}
+
+# Make goals on Windows, where `install` cannot run for Redis's reason — see `redis.WINDOWS_TARGETS`.
+WINDOWS_TARGETS = ("valkey-server", "valkey-cli", "valkey-check-rdb", "valkey-check-aof")
+
+# **Every line's `src/Makefile` says `USE_REDIS_SYMLINKS?=yes`**, which makes `install` add
+# `redis-server`, `redis-cli` and the rest as links to the Valkey binaries. They would collide with
+# the `redis` kind on a `PATH`, so upstream's own switch turns them off, on every goal.
+MAKE_OPTIONS = ("USE_REDIS_SYMLINKS=no",)
+
+# Installed and thrown away, for the Redis row's reasons: a benchmark, and a failover monitor for a
+# replica set MixEngine never runs.
+PRUNE = (f"bin/valkey-benchmark{SUFFIX}", f"bin/valkey-sentinel{SUFFIX}")
+
+# Where each `deps/` directory keeps its licence. A tuple where the file moved between lines:
+# `fast_float` has no licence file, and its MIT text is the header of `fast_float.h` on 8.1 and 9.0
+# and of `ffc.h` from 9.1. As in `redis.py`, a directory with no row stops the build.
+DEPS_LICENCES = {
+    "fast_float": ("fast_float.h", "ffc.h"),
+    "fpconv": ("LICENSE.txt",),
+    "hdr_histogram": ("COPYING.txt",),
+    "hiredis": ("COPYING",),
+    "jemalloc": ("COPYING",),
+    "libvalkey": ("COPYING",),
+    "linenoise": ("linenoise.c",),
+    "lua": ("COPYRIGHT",),
+}
+
+# In `deps/` and not redistributed code with a licence of its own, each for a stated reason. Named
+# rather than skipped by pattern, so a new directory still fails the build.
+NOT_REDISTRIBUTED = {
+    # One `.cpp` of Valkey's own, compiled only with `USE_FAST_FLOAT=yes`, which is off by default;
+    # covered by Valkey's `COPYING` either way.
+    "fast_float_c_interface": "Valkey's own source, not built by default",
+    # A Python script that runs Valkey's C++ unit tests in parallel. Compiled into nothing.
+    "gtest-parallel": "a test runner, compiled into nothing",
+}
+
 
 def catalogue() -> dict[tuple[int, ...], tuple[str, str, str]]:
     """Every stable release upstream has published, as ``version -> (version, url, sha256)``.
@@ -116,3 +161,112 @@ def source(spec: str, work: Path) -> tuple[str, Path, str, str]:
     if not (unpacked / "src" / "Makefile").is_file():
         raise SystemExit(f"{unpacked} has no src/Makefile; this is not a Valkey release tarball")
     return version, unpacked, actual, url
+
+
+def build_windows(source_tree: Path, prefix: Path) -> list[str]:
+    """Compile the core under Cygwin, the way `redis.build_windows` does, and copy out four binaries."""
+    root = redis.cygwin_root()
+    print(f"building under Cygwin at {root}")
+    targets = redis.dependency_targets(source_tree)
+    options = " ".join(MAKE_OPTIONS)
+    redis.cygwin(
+        root,
+        f'set -e\n'
+        f'make -C deps -j{redis.jobs()} CFLAGS="{redis.WINDOWS_CFLAGS}" {" ".join(targets)}\n'
+        f'make -C src -j{redis.jobs()} CFLAGS="{redis.WINDOWS_CFLAGS}" {options} '
+        f'{" ".join(WINDOWS_TARGETS)}\n',
+        cwd=source_tree,
+    )
+    binaries = prefix / "bin"
+    binaries.mkdir(parents=True, exist_ok=True)
+    for name in WINDOWS_TARGETS:
+        built = source_tree / "src" / f"{name}.exe"
+        if not built.is_file():
+            raise SystemExit(f"the build produced no {built.name}; make reported success")
+        shutil.copy2(built, binaries / built.name)
+    return [
+        f"make -C deps {' '.join(targets)} (Cygwin)",
+        f"make -C src {' '.join(WINDOWS_TARGETS)} {options} CFLAGS={redis.WINDOWS_CFLAGS!r}",
+    ]
+
+
+def build(source_tree: Path, prefix: Path) -> list[str]:
+    """Compile the core and install it, and answer with what was asked for.
+
+    ``make -C src``, as for Redis: the core's own Makefile, with TLS and RDMA at upstream's default of
+    off and the `redis-*` links switched off by name.
+    """
+    if sys.platform == "win32":
+        return build_windows(source_tree, prefix)
+    redis.run("make", "-C", "src", f"-j{redis.jobs()}", "all", *MAKE_OPTIONS, cwd=source_tree)
+    redis.run("make", "-C", "src", "install", f"PREFIX={prefix}", *MAKE_OPTIONS, cwd=source_tree)
+    options = " ".join(MAKE_OPTIONS)
+    return [f"make -C src all {options}", f"make -C src install PREFIX={prefix.name} {options}"]
+
+
+def licences(tree: Path, source_tree: Path) -> list[str]:
+    """Ship Valkey's licence and the licence of everything compiled into it, having checked the list."""
+    into = tree / "licenses"
+    into.mkdir(exist_ok=True)
+    shipped: list[str] = []
+
+    own = source_tree / "COPYING"
+    if not own.is_file():
+        raise SystemExit("the tarball carries no COPYING; nothing states the terms of this archive")
+    shutil.copy2(own, into / "valkey-COPYING")
+    shipped.append("valkey-COPYING")
+
+    deps = source_tree / "deps"
+    present = sorted(path.name for path in deps.iterdir() if path.is_dir())
+    unknown = [name for name in present if name not in DEPS_LICENCES and name not in NOT_REDISTRIBUTED]
+    if unknown:
+        raise SystemExit(
+            f"deps/ carries {', '.join(unknown)}, which neither DEPS_LICENCES nor NOT_REDISTRIBUTED "
+            f"names — this build would redistribute code whose licence it has not looked for. Add a row."
+        )
+    for name in present:
+        if name in NOT_REDISTRIBUTED:
+            continue
+        found = [deps / name / candidate for candidate in DEPS_LICENCES[name]
+                 if (deps / name / candidate).is_file()]
+        if not found:
+            raise SystemExit(
+                f"deps/{name} has none of {', '.join(DEPS_LICENCES[name])}; upstream moved its "
+                f"licence and the row has to move with it"
+            )
+        shutil.copy2(found[0], into / f"valkey-deps-{name}-{found[0].name}")
+        shipped.append(f"valkey-deps-{name}-{found[0].name}")
+
+    print(f"shipping {len(shipped)} licence file(s) for Valkey and its bundled deps")
+    return shipped
+
+
+def assemble(prefix: Path, work: Path, source_tree: Path) -> tuple[Path, dict[str, str]]:
+    """The installed prefix as the tree that will be packed, minus what does not ship."""
+    tree = work / "tree"
+    shutil.copytree(prefix, tree, symlinks=True)
+
+    dropped = []
+    for relative in PRUNE:
+        if os.path.lexists(tree / relative):
+            (tree / relative).unlink()
+            dropped.append(relative)
+    if dropped:
+        print(f"not shipping {', '.join(dropped)}")
+
+    redis_names = sorted(path.name for path in (tree / "bin").iterdir() if path.name.startswith("redis-"))
+    if redis_names:
+        raise SystemExit(
+            f"the install left {', '.join(redis_names)} in bin/ although USE_REDIS_SYMLINKS=no was "
+            f"passed; upstream changed the switch and the archive would collide with the redis kind"
+        )
+
+    provides = {name: path for name, path in LAYOUT.items() if os.path.lexists(tree / path)}
+    missing = sorted(set(LAYOUT) - set(provides))
+    if missing:
+        raise SystemExit(
+            f"the build installed no {', '.join(missing)}. Installed: "
+            f"{sorted(path.name for path in (tree / 'bin').iterdir())}"
+        )
+    licences(tree, source_tree)
+    return tree, provides
