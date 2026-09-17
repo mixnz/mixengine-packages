@@ -85,8 +85,10 @@ Cygwin leg on every line and let each line's result be its answer:
 
 ```
 kind        "valkey"
-provides    { "valkey-server": "bin/valkey-server[.exe]",
-              "valkey-cli":    "bin/valkey-cli[.exe]" }
+provides    { "valkey-server":    "bin/valkey-server[.exe]",
+              "valkey-cli":       "bin/valkey-cli[.exe]",
+              "valkey-check-rdb": "bin/valkey-check-rdb[.exe]",
+              "valkey-check-aof": "bin/valkey-check-aof[.exe]" }
 source      "built"
 upstream    { url, sha256 (from valkey-hashes), project: "valkey-io/valkey" }
 requires    glibc   Linux, measured
@@ -94,11 +96,17 @@ requires    glibc   Linux, measured
 smoke       { relocated: true, ran: [...] }
 ```
 
-- **No `redis-*` names.** `make install` creates `redis-server`, `redis-cli` and others as symlinks to
-  the Valkey binaries, for compatibility. They are a second name for a program the archive already
-  provides, a Cygwin symlink is one only Cygwin resolves (`redis.py` already refuses them for that
-  reason), and an archive answering `redis-server` would collide with the `redis` kind on a `PATH`.
-  So the archive holds only the `valkey-*` names.
+- **The same four names the Redis row provides**, in Valkey's spelling — the server, the client, and
+  the two check tools, which upstream installs as copies of the server that choose their behaviour by
+  `argv[0]`. Four rather than the two first written here, so the two rows can be told apart by name
+  alone and otherwise answer the same way; `valkey-benchmark` and `valkey-sentinel` go for Redis's
+  reasons.
+- **No `redis-*` names.** Every line's `src/Makefile` says `USE_REDIS_SYMLINKS?=yes`, which makes
+  `make install` add `redis-server`, `redis-cli` and the rest as symlinks to the Valkey binaries. They
+  are a second name for a program the archive already provides, a Cygwin symlink is one only Cygwin
+  resolves (`redis.py` already refuses them for that reason), and an archive answering `redis-server`
+  would collide with the `redis` kind on a `PATH`. So the build passes `USE_REDIS_SYMLINKS=no`, which
+  upstream offers by name on all five lines, and the archive holds only the `valkey-*` names.
 - **`valkey-server` takes its whole configuration from `argv`** and resolves nothing relative to where
   it was built, as Redis does; `relocate.verify` is what proves it.
 - **Nothing on Windows but `cygwin1.dll`**, LGPLv3, beside the binaries, with its licence — for the
@@ -106,9 +114,31 @@ smoke       { relocated: true, ran: [...] }
 
 ## Licence
 
-BSD-3-Clause on every line, plus the licences of what Valkey vendors in `deps/` (jemalloc, Lua,
-hiredis, linenoise, hdr_histogram, fpconv), which travel as Redis's do, and LGPLv3 for `cygwin1.dll` on
-Windows. Nothing here asks for the source-availability work the Redis 7.4+ lines need.
+BSD-3-Clause on every line, plus the licences of what Valkey vendors in `deps/`, which travel as
+Redis's do, and LGPLv3 for `cygwin1.dll` on Windows. Nothing here asks for the source-availability
+work the Redis 7.4+ lines need.
+
+**What `deps/` holds is not the same on any two lines**, measured on the newest tarball of each:
+
+| Line | `deps/` | `DEPENDENCY_TARGETS` |
+| --- | --- | --- |
+| 7.2, 8.0 | fpconv, hdr_histogram, hiredis, jemalloc, linenoise, lua | hiredis linenoise lua hdr_histogram fpconv |
+| 8.1 | + fast_float, fast_float_c_interface | the same |
+| 9.0 | hiredis → **libvalkey** | libvalkey linenoise lua hdr_histogram fpconv |
+| 9.1 | − fast_float_c_interface, + gtest-parallel | libvalkey linenoise hdr_histogram fpconv |
+
+So the licence table is Redis's shape with three differences. `libvalkey` carries `COPYING`.
+`fast_float` has no licence file: the MIT text is the header comment of `fast_float.h` on 8.1 and 9.0
+and of `ffc.h` on 9.1, so either file is accepted. And two directories are not redistributed code with
+a licence of their own: `fast_float_c_interface` is one `.cpp` of Valkey's, compiled only with
+`USE_FAST_FLOAT=yes`, which is off by default and covered by `COPYING` when it is not; and
+`gtest-parallel` is a test runner, compiled into nothing. Both are named as such, so a genuinely new
+directory still stops the build.
+
+**Lua left `DEPENDENCY_TARGETS` on 9.1 and did not leave the server.** From 9.1 the scripting engine is
+a module, built by default as a *static* one — `modules/lua/libvalkeylua.a` linked into
+`valkey-server` with `deps/lua` — so the binary still runs `EVAL` and still redistributes Lua. The smoke
+test runs a script for that reason.
 
 ## No end-of-life dates, on purpose
 
@@ -117,10 +147,11 @@ date. Nothing machine-readable exists, so `valkey` has no `eol` field.
 
 ## How it is proven
 
-The Redis smoke shape: move the tree, start `valkey-server` on a free port with no configuration file
-and no persistence, `PING`, `SET`, `GET`, `INFO server` whose `valkey_version` matches the manifest,
-then `SHUTDOWN NOSAVE` and confirm the process is gone. `valkey-cli --version` is asked too, because it
-is the other provided name.
+The Redis smoke shape: move the tree, start `valkey-server` against a rendered configuration on a free
+port with no persistence, `PING`, `INFO server` whose `valkey_version` matches the manifest, `SET` and
+`GET`, an `EVAL` that proves the Lua engine is in the binary, then `SHUTDOWN NOSAVE` and confirm the
+process is gone. `INFO` is read for `valkey_version` specifically: every line also reports a
+`redis_version` for client compatibility — 7.2.4 on the 7.2 line — which is not this archive's version.
 
 ## What this does not do
 
@@ -133,11 +164,15 @@ is the other provided name.
 
 ## What is left to measure before a line of the recipe is written
 
-1. Whether `redis.py`'s build, catalogue and smoke functions can be shared by both kinds or should be
-   copied — the answer depends on how many of Redis's Cygwin workarounds Valkey 8.x still needs.
-2. The Cygwin leg on all five lines, as above.
+1. **Decided while reading `redis.py`:** the parts that are about Cygwin and `make` — finding and
+   running Cygwin, reading `DEPENDENCY_TARGETS`, the two `CFLAGS`, a free port — are imported from
+   `redis.py`; the parts that are about the program — names, licences, the smoke test — are Valkey's
+   own in `tools/valkey.py`. A second copy of the Cygwin workarounds would be two places for one
+   runtime's quirks to drift.
+2. The Cygwin leg on all five lines, as above. No Cygwin on the development machine, so CI answers.
 3. The macOS floor and the glibc floor of each Unix cell.
-4. `9.2.0-rc1` is in the catalogue; whether the `rc` channel is wanted for this kind.
+4. `9.2.0-rc1` is in the catalogue: **not offered** — the recipe takes three-part versions only, as
+   Redis's does.
 
 ## The task
 
