@@ -73,6 +73,24 @@ LAYOUT = {
     "unix": {"go": "bin/go", "gofmt": "bin/gofmt"},
 }
 
+# What the smoke test builds. Three standard packages rather than `fmt` alone, so the compile reaches
+# assembly (`crypto/sha256`) and a large dependency graph (`net/http`), and it prints the version it
+# was compiled by — which only this Go can answer.
+PROGRAM = """package main
+
+import (
+\t"crypto/sha256"
+\t"fmt"
+\t"net/http"
+\t"runtime"
+)
+
+func main() {
+\tsum := sha256.Sum256([]byte("mixengine"))
+\tfmt.Printf("%s %x %s\\n", runtime.Version(), sum, http.StatusText(http.StatusTeapot))
+}
+"""
+
 
 def resolve(spec: str, target: tuple[str, str]) -> tuple[str, str, str]:
     """Turn ``1.27``, ``1.27.1`` or ``latest`` into ``(version, filename, sha256)`` for this cell.
@@ -185,3 +203,82 @@ def describe(
         "provides": dict(layout),
     }
     return borrow.declare(tree, manifest, removed=removed, changed=changed)
+
+
+def smoke(tree: Path, version: str, manifest: dict, target: tuple[str, str]) -> dict:
+    """Run the artifact from somewhere it has never been, and make it compile something there.
+
+    `go version` alone would pass on a tree that cannot build anything — the binary reports a
+    constant. What breaks in a moved Go is `GOROOT`: the standard library, the compiler and the
+    linker are all found relative to `bin/go`. So the test builds and runs a program, and checks
+    that the program itself reports this version.
+
+    **Nothing the runner has can answer for it.** `GOTOOLCHAIN=local` stops the go command from
+    fetching another toolchain, `GOPROXY=off` stops it reaching the network at all, `GOENV=off`
+    ignores the runner user's `go env -w` file, every `GO*` and `CGO*` variable the runner image set
+    is dropped first, and `CGO_ENABLED=0` because a C compiler is not part of the artifact.
+    """
+    goos, goarch, _ = TARGETS[target]
+    elsewhere = borrow.moved(tree)
+
+    problems = relocate.verify(elsewhere, directories=("bin", f"pkg/tool/{goos}_{goarch}"))
+    for problem in problems:
+        print(f"error: {problem}", file=sys.stderr)
+    if problems:
+        raise SystemExit("the relocated tree reaches outside itself")
+
+    go = elsewhere / manifest["provides"]["go"]
+    gofmt = elsewhere / manifest["provides"]["gofmt"]
+    path = borrow.clean_path(go.parent)
+    work = borrow.long_name(Path(tempfile.mkdtemp(prefix="mixengine-go-")))
+    environment = {
+        "GOTOOLCHAIN": "local",
+        "GOPROXY": "off",
+        "GOENV": "off",
+        "CGO_ENABLED": "0",
+        "GOCACHE": str(work / "cache"),
+        "GOPATH": str(work / "gopath"),
+    }
+
+    def run(program: Path, *args: str) -> str:
+        return borrow.run(program, *args, path=path, drop=("GO", "CGO"), environment=environment)
+
+    banner = run(go, "version")
+    if not banner.startswith(f"go version go{version} "):
+        raise SystemExit(f"go reports {banner!r}, expected go{version}")
+
+    root = Path(run(go, "env", "GOROOT"))
+    if not root.samefile(elsewhere):
+        raise SystemExit(f"go resolved GOROOT to {root}, not to the relocated tree {elsewhere}")
+
+    project = work / "hello"
+    project.mkdir()
+    (project / "go.mod").write_text("module smoke\n\ngo 1.21\n", encoding="utf-8", newline="\n")
+    (project / "main.go").write_text(PROGRAM, encoding="utf-8", newline="\n")
+    binary = project / ("hello.exe" if target[0] == "windows" else "hello")
+    # `-C` is the first flag after the subcommand, where the go command requires it, and it exists
+    # from 1.20 — below every line offered.
+    run(go, "build", "-C", str(project), "-o", str(binary), ".")
+
+    expected = f"go{version} {hashlib.sha256(b'mixengine').hexdigest()} I'm a teapot"
+    said = run(binary)
+    if said != expected:
+        raise SystemExit(f"the program built by this Go printed {said!r}, expected {expected!r}")
+
+    unformatted = run(gofmt, "-l", str(project))
+    if unformatted:
+        raise SystemExit(f"gofmt reports {unformatted!r} as unformatted, and it is not")
+
+    borrow.discard(elsewhere)
+    shutil.rmtree(work, ignore_errors=True)
+    return {
+        "relocated": True,
+        "ran": [
+            f"{manifest['provides']['go']} version",
+            f"{manifest['provides']['go']} env GOROOT",
+            "go build of fmt, crypto/sha256 and net/http with GOTOOLCHAIN=local GOPROXY=off "
+            "CGO_ENABLED=0",
+            "the built program, reporting runtime.Version()",
+            f"{manifest['provides']['gofmt']} -l",
+        ],
+    }
