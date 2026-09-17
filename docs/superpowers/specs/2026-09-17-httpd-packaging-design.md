@@ -36,6 +36,11 @@ from the publisher, and nothing a blueprint pins is ever pruned upstream.
 **Windows on ARM is a cell nginx's row does not have**, because nginx's Windows cell is a borrow of a
 32-bit build and httpd's is compiled with MSVC, which targets ARM64 natively.
 
+> **Amended 2026-09-18, and this is the sentence the measurement moved.** MSVC targets ARM64
+> natively; httpd's own Windows build does not. Two things stop it, both of them 32-bit assumptions
+> in the build rather than in the code, and both answered without touching a source file — see
+> [what was measured](#what-was-measured).
+
 ## Why nothing is borrowed
 
 The Apache Software Foundation publishes source only. On Windows, the build everybody uses is
@@ -79,6 +84,10 @@ cell against it:
   files written for 2.2 still say `Order allow,deny`, and a project that fails on that line is the one
   this row exists for.
 - **PHP and TLS**: `mod_proxy`, `mod_proxy_fcgi`, `mod_ssl`, `mod_socache_shmcb`, `mod_http2`.
+- **Amended 2026-09-18**: `mod_filter` as well, which is twenty. `AddOutputFilterByType` — the only
+  line most `.htaccess` files and most tutorials use to turn `mod_deflate` on — is **mod_filter's**
+  directive in 2.4, not `mod_deflate`'s. The set had the compressor and not the thing that switches
+  it on by content type, so a configuration nobody would think twice about would have been a 500.
 
 **Every module is built shared**, so a rendered configuration turns each on or off, and `extensions`
 in the manifest lists them the way PHP's shared extensions are listed.
@@ -86,6 +95,18 @@ in the manifest lists them the way PHP's shared extensions are listed.
 **The platform asymmetries are httpd's, and declared rather than hidden**: the MPM is `event` with
 `mod_unixd` on Unix and `mpm_winnt` on Windows. A module that exists only on one platform is not a
 parity failure; one that is missing from one cell is.
+
+**Amended 2026-09-18: those platform modules are compiled *into* the server and are not in
+`extensions` at all**, which is what keeps `parity.py` — where `shared` counts for every kind but PHP
+— comparing the twenty modules the row decided on rather than reporting `unixd` as something five
+cells have and the sixth does not. Two measurements are behind that:
+
+- **`--enable-modules=none` switches `mod_unixd` off with everything else**, and an httpd without it
+  starts and then refuses every connection: `AH00136: Server MUST relinquish startup privileges
+  before accepting connections`, on both macOS cells. It is asked for by name, static.
+- **A module whose default is "whatever my parent is" follows `mod_proxy`**: enabling proxy built
+  fourteen more — every `mod_proxy_*` protocol and every balancer — so `configure` is handed
+  `--disable-<name>` for every module in its own list that this row did not choose.
 
 ## How PHP reaches it
 
@@ -158,14 +179,61 @@ artifact that needs another kind can go red for a reason that is not this artifa
 - **No `mod_security`, `mod_fcgid`, `mod_jk`** or anything outside the httpd tarball.
 - **Nothing in MixEngine.**
 
-## What is left to measure before a line of the recipe is written
+## What was measured
 
-1. Whether httpd 2.4.68 and APR-util's CMake builds complete on `windows-11-arm` with nothing patched —
-   the one leg with no precedent anywhere, and the first thing to run.
-2. The size of everything on the removal list, per cell.
-3. `vcredist` from the import tables, the glibc floor and the macOS floor.
-4. Whether `mod_http2` is worth nghttp2 as a fourth bundled library, or waits.
-5. Whether a Windows runner's administrator token matters (P12a).
+*Amended 2026-09-18, from CI runs of the recipe on all six cells. The five questions above, in
+order, and then what nobody had asked.*
+
+**1. Windows on ARM64 builds, and needed three things named — none of them a source edit.** The
+libraries were the easy half: zlib, PCRE2, expat, nghttp2 and OpenSSL (`VC-WIN64-ARM`, `no-asm`) all
+build unpatched with the native ARM64 compiler. httpd's own Windows build is where the 32-bit
+assumptions are.
+
+- **APR and APR-util declare a CMake minimum below 3.5**, which CMake 4 — the version on the ARM
+  runner's `PATH`, where the x64 runner offered Visual Studio's 3.x — refuses outright. Answered
+  with `-DCMAKE_POLICY_VERSION_MINIMUM=3.5`, CMake's own documented escape.
+- **`os/win32/BaseAddr.ref` gives every DLL a 32-bit preferred load address**, and `link.exe`
+  answers `LNK1355: invalid base address 0x6FF00000; ARM64 image cannot have base address below
+  4GB` at the first link of `libhttpd.dll`. The **copy CMake generates in the build directory** has
+  4 GB added to each address; upstream's file is untouched, the table keeps its spacing, and a
+  preferred base is a request that ASLR overrides anyway.
+- **OpenSSL installs `openssl/applink.c` only for its x86 and x64 targets**, and `support/ab.c`
+  includes it whenever OpenSSL was found — so the ARM64 build stopped at `abs.exe`, after every
+  module had linked. The file is copied out of OpenSSL's own source tree when the install did not
+  leave one.
+
+**2. What the removal list weighs**, on Linux x86_64: `manual/` 24.0 MB, `include/` 1.7 MB, the two
+static APR archives 3.4 MB, `icons/` 434 kB, `build/` 387 kB with `apxs`, `man/` 81 kB, and fourteen
+support programs of which `ab` alone is 7.1 MB. What is left packs to 6.1 MB on Linux x86_64 and
+5.6 MB on macOS aarch64.
+
+**3. The floors.** `glibc` 2.34 on Ubuntu 22.04, macOS 14.0 and 15.0 on the two macOS cells, and the
+**Visual C++ 2022 redistributable** on Windows, from `vcruntime140.dll` in the import tables — the
+dynamic CRT is deliberate, because httpd, APR and every module pass CRT-owned objects across DLL
+boundaries.
+
+**4. `mod_http2` is in**, and nghttp2 costs 156 kB of DLL on Windows; on Unix it is a static archive
+inside `mod_http2.so`. Nothing about it needed a second round.
+
+**5. A Windows runner's administrator token changed nothing**: the token is elevated on both Windows
+runners and the server built, started, served and stopped the same either way.
+
+**And what nobody had asked**, each of which cost a CI round:
+
+- **`--enable-modules=none` also switches off `mod_unixd`**, and httpd then starts and refuses every
+  connection with `AH00136`. Asked for by name, static, on both macOS cells before either Linux cell
+  had got that far.
+- **`mod_proxy` brings fourteen more modules**, because a module whose default is its parent's
+  follows it; every module outside the set is now disabled by name.
+- **Stripping has to happen before relocation, and on the install prefix**: `relocate.bundle` copies
+  APR's libraries out of the prefix over the tree's, so a tree stripped first gets its debug
+  information back — and a tree stripped *afterwards* has been through `patchelf`, whose rewritten
+  segments `strip` then changes in a way `strip.debug` refuses to publish.
+- **`httpd -k stop` is a Windows service command.** In a console it answers `AH00436: No installed
+  service named "Apache2.4"` while the server it was aimed at goes on serving. What stops that one is
+  a console control event, which is also what upstream's Windows documentation says.
+- **`mod_deflate` does not compress a 28-byte body**, so the smoke test's file is 64 kB. A check
+  that asserted gzip on one line would have been a red run about nothing.
 
 ## The task
 
