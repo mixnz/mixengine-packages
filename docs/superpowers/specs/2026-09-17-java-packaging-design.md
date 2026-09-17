@@ -68,6 +68,14 @@ One detail the recipe has to be written against rather than find: every package 
 carries `sha256sum` **and** a misspelled `sha265sum` with the same value. The recipe reads the correct
 key and ignores the other.
 
+**The version is Microsoft's file name, not the release name.** `release_name` for the first release of
+25 is `jdk-25+36`, one number, while its package is `microsoft-jdk-25.0.0-linux-x64.tar.gz`. The index
+version is read out of the package name (`25.0.0`, `21.0.12.1`), and `release_name` travels as
+`upstream.release`, which is what that field is for. **The catalogue is complete**, measured on
+2026-09-17: every release Microsoft has shipped on a line is listed, identically for all six cells —
+16 on 11 (from 11.0.17), 16 on 17 (from 17.0.5), 12 on 21 (from 21.0.2) and 6 on 25 (from 25.0.0) — so
+a pinned older release can be re-resolved.
+
 The archive taken is `.tar.gz` on macOS and Linux and `.zip` on Windows. `.pkg`, `.msi` and `.exe` are
 installers and are ignored. The Alpine (`musl`) archives are not a cell here.
 
@@ -101,8 +109,27 @@ Each large directory, against the rule:
   a recipe: an IDE pointed at this JDK shows decompiled classes instead of source.
 
 **No debug symbols are inside.** Microsoft publishes them in a separate `debugsymbols` archive, and the
-Windows zips contain no `.pdb`, `.diz` or `.map`. The Unix cells are measured by P6b's check rather
-than assumed to match.
+Windows zips contain no `.pdb`, `.diz` or `.map`. Measured before the recipe was written, with this
+repository's own `strip.debug_sections` over every binary of the 25.0.4.1 Windows x64 (124), Linux x64
+(71) and macOS aarch64 (73) trees and the 11.0.32.1 Linux x64 (73) and Windows ARM64 (81) ones: **not
+one carries debug information**, so nothing is stripped on any cell.
+
+**Three more things go, which the Windows-only table above could not show:**
+
+- **`include/`** — `jni.h` and its siblings, 0.2–0.3 MB on every cell. They are read by a C compiler
+  building JNI code against this JDK, and no compiler is in the archive. This is Node's `include/node`
+  decision again, and `parity.py` names `include` as surplus at the root.
+- **`lib/jvm.lib` and `lib/jawt.lib`**, on the Windows cells only — the import libraries for linking
+  native code against `jvm.dll`. The same reason, and `parity.py` names `*.lib` as surplus. The Unix
+  cells have no counterpart to remove: there the shared library is its own link target.
+- **`man/`**, on the Unix cells of 11 and 17 — 75 manual pages in two languages on 11.0.32.1 Linux,
+  and none on 21 or 25. A Windows cell has never had them.
+
+**`lib/src.zip`, `include/` and `man/` sit under `Contents/Home/` on macOS**, which is inside a signed
+bundle: the tarball carries `Contents/_CodeSignature/CodeResources`. Removing a file from `Home`
+breaks the *bundle's* seal and no binary's own signature, and nothing here launches the JDK as a
+bundle — `provides` points at `Contents/Home/bin/java`, which is signed on its own. The macOS smoke
+test is what proves that rather than this paragraph.
 
 ## What the artifact promises
 
@@ -127,8 +154,12 @@ Three things said out loud:
 - **The macOS tarball keeps its bundle layout.** A macOS JDK is a `Contents/Home/` tree, so
   `provides.java` there is deeper than on Linux and Windows. *Repack, do not rearrange* says it stays
   that way, and `provides` is what absorbs the difference.
-- **No `requires.vcredist` is expected**: the Windows `bin/` carries `ucrtbase.dll` and its own C
-  runtime beside `jvm.dll`. That is measured off the import tables before it is relied on.
+- **No `requires.vcredist`, and the rule that says so is not MongoDB's.** Every Windows cell imports
+  `vcruntime140.dll` and `msvcp140.dll` — and every one ships them in `bin/` beside `jvm.dll`
+  (`vcruntime140`, `vcruntime140_1`, `msvcp140` and `ucrtbase` on 21 and 25 x64; `vcruntime140` and
+  `msvcp140` on 11 ARM64). `mongodb.vcredist` reads only the import table, and would declare a
+  requirement this archive already satisfies. So the recipe declares a redistributable only for a
+  runtime DLL that is imported **and not in the tree**, and expects that set to be empty.
 
 ## Licence
 
@@ -165,13 +196,13 @@ and the machine-readable table that exists is `endoflife.date`, a third-party mi
 
 ## What is left to measure before a line of the recipe is written
 
-1. The four Unix cells of 21 and 25: layout (`Contents/Home` on macOS), size, and whether `jmods/`
-   and `src.zip` are the same there as on Windows.
-2. Import tables of `java.exe` and `jvm.dll` on both Windows architectures — the `vcredist` question.
-3. The glibc floor of `libjvm.so` on both Linux architectures, and the macOS floor on both.
-4. DWARF or symbol tables inside the Unix cells, per P6b.
-5. Whether the Marketplace document lists every patch release Microsoft still serves for 11 and 17,
-   or only recent ones — which decides whether a pinned old release can be re-resolved.
+1. ~~Layout of the Unix cells~~ — measured: `jmods/` and `src.zip` are on every cell, macOS wraps the
+   tree in `Contents/Home`, and `man/` exists on the Unix cells of 11 and 17 only.
+2. ~~Import tables on Windows~~ — measured on x64 25 and ARM64 11: the C runtime is bundled.
+3. The glibc floor of `libjvm.so` on both Linux architectures, and the macOS floor on both — only a
+   runner of that OS can read them with `relocate.floor`.
+4. ~~DWARF~~ — measured: none on any cell examined.
+5. ~~Marketplace completeness~~ — measured: complete and symmetric.
 
 ## The task
 
