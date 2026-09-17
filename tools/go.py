@@ -64,6 +64,15 @@ FLOOR = (1, 21)
 # release from before the three-part naming, which the floor already excludes.
 STABLE = re.compile(r"go(\d+\.\d+\.\d+)")
 
+# Removed at the root. Each is read only while Go builds or tests itself — measured by searching
+# every non-test `.go` file of 1.27.1 for a path joining GOROOT to it, and finding none.
+REMOVED_ROOT = ("api", "test", "doc")
+
+LAYOUT = {
+    "windows": {"go": "bin/go.exe", "gofmt": "bin/gofmt.exe"},
+    "unix": {"go": "bin/go", "gofmt": "bin/gofmt"},
+}
+
 
 def resolve(spec: str, target: tuple[str, str]) -> tuple[str, str, str]:
     """Turn ``1.27``, ``1.27.1`` or ``latest`` into ``(version, filename, sha256)`` for this cell.
@@ -110,3 +119,69 @@ def resolve(spec: str, target: tuple[str, str]) -> tuple[str, str, str]:
             f"{', '.join(sorted(lines, key=borrow.parts))}"
         )
     return offered[candidates[-1]]
+
+
+def prune(tree: Path) -> list[str]:
+    """Remove what nothing a user runs reads, and answer with what went, as POSIX paths.
+
+    **A delete-list, and not the keep-list `node.py` argues for**, because the argument inverts
+    here. Node's surplus sits at the root of a tree of five entries; Go's payload is `src/`, where
+    a keep-list would have to name every standard-library package on every line. What is removed is
+    instead named by what it is — three root directories, and every directory called `testdata`,
+    which is Go's own convention for "read by `go test` and nothing else", so a fixture a future
+    line adds is caught without being known.
+
+    Only the outermost `testdata` is named: `upstream.removed` spells a directory by its root, and a
+    nested one goes with its parent.
+    """
+    source = tree / "src"
+    doomed = [tree / name for name in REMOVED_ROOT if (tree / name).is_dir()]
+    doomed += sorted(
+        path for path in source.rglob("testdata")
+        if path.is_dir() and "testdata" not in path.relative_to(source).parts[:-1]
+    )
+
+    removed: list[str] = []
+    freed = 0
+    for path in doomed:
+        freed += sum(child.stat().st_size for child in path.rglob("*") if child.is_file())
+        shutil.rmtree(path)
+        removed.append(path.relative_to(tree).as_posix())
+
+    print(f"dropped {len(removed)} paths ({freed:,} bytes)")
+    return removed
+
+
+def describe(
+    tree: Path, version: str, target: tuple[str, str], url: str, digest: str,
+    removed: list[str], changed: dict[str, str],
+) -> dict:
+    """What is in the archive, as the daemon will read it.
+
+    *changed* is `strip.debug`'s answer, expected to be empty on every cell; *removed* is
+    :func:`prune`'s. Both go through `borrow.declare`, which checks each claim against the tree.
+    """
+    operating_system, arch = target
+    layout = LAYOUT["windows" if operating_system == "windows" else "unix"]
+    missing = [name for name, path in layout.items() if not (tree / path).exists()]
+    if missing:
+        raise SystemExit(
+            f"the archive provides no {', '.join(missing)} at "
+            f"{', '.join(layout[name] for name in missing)}"
+        )
+
+    manifest = {
+        "schema": 1,
+        "kind": "go",
+        "version": version,
+        "os": operating_system,
+        "arch": arch,
+        "source": "borrowed",
+        "upstream": {
+            "url": url,
+            "sha256": digest,
+            "verified_against": "go.dev/dl/?mode=json&include=all over HTTPS to the publisher",
+        },
+        "provides": dict(layout),
+    }
+    return borrow.declare(tree, manifest, removed=removed, changed=changed)
