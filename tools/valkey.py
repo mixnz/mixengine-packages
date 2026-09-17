@@ -270,3 +270,128 @@ def assemble(prefix: Path, work: Path, source_tree: Path) -> tuple[Path, dict[st
         )
     licences(tree, source_tree)
     return tree, provides
+
+
+def await_pong(cli: Path, port: int, process: subprocess.Popen, log: Path,
+               environment: dict, seconds: float = 30) -> None:
+    """Wait for the server to answer ``PING``, or say what it said instead."""
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise SystemExit(
+                f"valkey-server exited {process.returncode} before it answered PING\n"
+                f"{log.read_text(encoding='utf-8', errors='replace')}"
+            )
+        answer = subprocess.run([str(cli), "-p", str(port), "ping"], capture_output=True, text=True,
+                                timeout=30, env=environment)
+        if answer.returncode == 0 and answer.stdout.strip() == "PONG":
+            return
+        time.sleep(0.2)
+    process.kill()
+    raise SystemExit(
+        f"valkey-server never answered PING on {port}\n{log.read_text(encoding='utf-8', errors='replace')}"
+    )
+
+
+def smoke(tree: Path, version: str, provides: dict[str, str]) -> dict:
+    """Run the artifact from somewhere it has never been, and make it be a cache while there.
+
+    Redis's test with Valkey's names, and two differences. `INFO server` is read for
+    `valkey_version`, because every line also reports a `redis_version` for clients — 7.2.4 on the 7.2
+    line — which is not this archive's version. And an `EVAL` runs, because from 9.1 the Lua engine is
+    a module linked into the server rather than part of it, and a build that lost it would still answer
+    `PING` and `GET`.
+
+    The configuration is written with a quoted `dir` and named relatively against a working directory,
+    for the two reasons `redis.smoke` gives: a path with a space, and Cygwin's idea of an absolute path.
+    """
+    elsewhere = borrow.moved(tree)
+    problems = relocate.verify(elsewhere)
+    for problem in problems:
+        print(f"error: {problem}", file=sys.stderr)
+    if problems:
+        raise SystemExit("the relocated tree reaches outside itself")
+
+    server = elsewhere / provides["valkey-server"]
+    cli = elsewhere / provides["valkey-cli"]
+    path = borrow.clean_path(server.parent)
+
+    banner = borrow.run(server, "--version", path=path)
+    if f"v={version} " not in banner:
+        raise SystemExit(f"valkey-server reports {banner!r}, expected a v={version} build")
+    print(f"valkey-server: {banner}")
+
+    port = redis.free_port()
+    work = elsewhere.parent / "instance"
+    work.mkdir(parents=True, exist_ok=True)
+    config = work / "valkey.conf"
+    config.write_text(
+        f"bind 127.0.0.1\n"
+        f"port {port}\n"
+        f"dir \"{work.as_posix()}\"\n"
+        f"save \"\"\n"
+        f"appendonly no\n"
+        f"daemonize no\n",
+        encoding="utf-8",
+    )
+
+    log = work / "valkey.log"
+    environment = {**os.environ, "PATH": path}
+    with log.open("wb") as sink:
+        process = subprocess.Popen([str(server), config.name], stdout=sink, stderr=subprocess.STDOUT,
+                                   env=environment, cwd=str(work))
+
+    def cli_run(*args: str) -> str:
+        return borrow.run(cli, "-p", str(port), *args, path=path)
+
+    try:
+        await_pong(cli, port, process, log, environment)
+        print(f"valkey-cli ping: PONG on {port}")
+
+        info = cli_run("info", "server")
+        reported = dict(line.split(":", 1) for line in info.splitlines()
+                        if ":" in line and not line.startswith("#"))
+        if reported.get("valkey_version", "").strip() != version:
+            raise SystemExit(
+                f"the server on {port} reports valkey_version {reported.get('valkey_version')!r}; "
+                f"this archive is {version}"
+            )
+        print(f"valkey-cli info server: valkey_version {version}")
+
+        expected = f"mixengine {version}"
+        cli_run("set", "mixengine:smoke", expected)
+        stored = cli_run("get", "mixengine:smoke")
+        if stored != expected:
+            raise SystemExit(f"GET answered {stored!r}, expected {expected!r}")
+
+        scripted = cli_run("eval", "return ARGV[1]", "0", expected)
+        if scripted != expected:
+            raise SystemExit(f"EVAL answered {scripted!r}; the Lua engine is not doing its job")
+        print(f"valkey-cli set/get/eval: {stored}")
+
+        subprocess.run([str(cli), "-p", str(port), "shutdown", "nosave"], capture_output=True,
+                       text=True, timeout=60, env=environment)
+        try:
+            process.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            raise SystemExit("valkey-cli shutdown returned and the server was still running") from None
+        print("valkey-cli shutdown nosave: the server exited")
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=30)
+
+    borrow.discard(elsewhere)
+    return {
+        "relocated": True,
+        "ran": [
+            "bin/valkey-server --version",
+            "valkey-server against a rendered valkey.conf",
+            "valkey-cli ping",
+            "valkey-cli info server, valkey_version checked against this archive's version",
+            "valkey-cli set/get",
+            "valkey-cli eval, which the Lua engine answers",
+            "valkey-cli shutdown nosave",
+        ],
+    }
