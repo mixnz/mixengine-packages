@@ -88,6 +88,7 @@ command above.
 | `node` | `release/build.sh node 22` | a line, an exact version, or `lts` |
 | `python` | `release/build.sh python 3.14` | a line, an exact version, or `latest` |
 | `ruby` | `release/build.sh ruby 3.4` | a line, an exact version, or `latest` |
+| `go` | `release/build.sh go 1.27` | a line, an exact version, or `latest`; 1.21 upwards |
 | `caddy` | `release/build.sh caddy latest` | a line, an exact version, or `latest` |
 | `nginx` | `release/build.sh nginx 1.30` | `1.30` is stable, `1.31` is mainline |
 | `redis` | `release/build.sh redis 8.10` | a line, an exact version, or `latest` |

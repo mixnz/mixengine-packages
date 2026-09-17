@@ -1,0 +1,114 @@
+name: build go
+
+# Asked for, never automatic — the same rule every other workflow here keeps, for the same reason:
+# upstream releases on its own schedule and a human decides which version is wanted.
+#
+# **One job for six targets, and no `plan` step.** Go is borrowed everywhere, so there is one recipe
+# and nothing to decide before the matrix starts. The whole per-target difference is a file name,
+# which `tools/go.py` reads off the machine it is running on.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Go line (1.27), exact version (1.27.1), or 'latest'. 1.21 upwards."
+        required: true
+        type: string
+      release:
+        description: 'Publish as a GitHub release. Off means build and keep the artifacts for inspection only.'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  pack:
+    # Every leg runs on the operating system and architecture it packs for, because the recipe
+    # smoke-tests what it packed — it moves the tree to a directory it has never seen and makes the
+    # `go` there compile and run a program with the network switched off. Cross-packing would be a
+    # download and a rename, and would prove nothing.
+    #
+    # **Linux is on the newest image**, as Node's is: the binaries are upstream's, and the floor they
+    # carry — none, for a static `go` — is read off them rather than decided by the runner.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: windows-2022,     os: windows, arch: x86_64 }
+          - { runner: windows-11-arm,   os: windows, arch: aarch64 }
+          - { runner: macos-14,         os: macos,   arch: aarch64 }
+          - { runner: macos-15-intel,   os: macos,   arch: x86_64 }
+          - { runner: ubuntu-24.04,     os: linux,   arch: x86_64 }
+          - { runner: ubuntu-24.04-arm, os: linux,   arch: aarch64 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: borrow and repack
+        id: pack
+        # bash on every leg, Windows included, so the exit code is read the same way everywhere.
+        #
+        # 75 is "upstream builds nothing for this target", which is an empty cell of the table and
+        # not a failure. No line from 1.21 is expected to have one; the path stays wired because a
+        # target upstream withdraws is exactly what 75 exists for. Every other non-zero code is a
+        # real failure and is passed on.
+        #
+        # -u because a failure is diagnosed from the log, and block-buffered stdout arrives after
+        # the traceback that explains it.
+        shell: bash
+        run: |
+          # `|| code=$?` rather than reading `$?` on the next line: GitHub runs `shell: bash` with
+          # `-e`, so a non-zero exit ends the step before anything can look at the code.
+          code=0
+          python -u tools/go.py --version "${{ inputs.version }}" --out dist || code=$?
+          if [ "$code" -eq 75 ]; then
+            echo "::notice::no upstream Go ${{ inputs.version }} for ${{ matrix.os }}/${{ matrix.arch }}; nothing to pack"
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          exit "$code"
+        timeout-minutes: 30
+      - uses: actions/upload-artifact@v4
+        if: steps.pack.outputs.skipped != 'true'
+        with:
+          name: go-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    # One release per exact version, holding every artifact of it. The version is read back out of
+    # each manifest rather than taken from the input, because the input may be a line or `latest`
+    # and each leg resolves it against go.dev independently. If two legs disagree they land in
+    # different releases, which is the honest outcome rather than a mislabelled asset.
+    needs: pack
+    if: ${{ inputs.release && !failure() && !cancelled() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: incoming, merge-multiple: true }
+      - name: publish one release per version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          versions=$(jq -r '.version' incoming/*.json | sort -u)
+          for version in $versions; do
+            tag="go-$version"
+            assets=()
+            for manifest in incoming/*.json; do
+              [ "$(jq -r '.version' "$manifest")" = "$version" ] || continue
+              # Both halves: the manifest is what the index generator reads, so a release holding
+              # only the archive is a release the index cannot be rebuilt from.
+              assets+=("${manifest%.json}" "$manifest")
+            done
+            echo "== $tag: ${#assets[@]} artifact(s)"
+            if ! gh release view "$tag" >/dev/null 2>&1; then
+              gh release create "$tag" \
+                --title "Go $version" \
+                --notes "Relocatable Go $version for MixEngine, repacked from go.dev under BSD-3-Clause. Every artifact built and ran a program from a directory it had been moved to before being published, with GOTOOLCHAIN=local and no network — see mixengine-artifact.json inside each one for what was proven."
+            fi
+            gh release upload "$tag" "${assets[@]}" --clobber
+          done
