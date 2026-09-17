@@ -206,6 +206,18 @@ anything is added here.
 See [the design](superpowers/specs/2026-09-15-mongodb-packaging-design.md) and
 [packages/mongodb.md](packages/mongodb.md#the-shell-is-a-different-package).
 
+### [~] P19 — Go
+
+Seven lines from 1.21, six cells each, every cell borrowed from go.dev. `tools/go.py` and
+`build-go.yml` are written, and the Windows x86_64 cell of 1.21.13 and of 1.27.1 packs, passes
+`parity.py`, and indexes cleanly on a development machine. What is not done is everything only a
+runner can say: the other five cells of each line — in particular whether the `.syso` objects or the
+tool binaries carry DWARF on Linux, and the macOS floor — and then publishing the seven lines, which
+fills the README table and closes this task.
+
+See [the design](superpowers/specs/2026-09-17-go-packaging-design.md) and
+[packages/go.md](packages/go.md).
+
 ---
 
 ## Working on this file
