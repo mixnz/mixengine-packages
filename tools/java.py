@@ -62,6 +62,17 @@ TARGETS = {
 # The oldest LTS line Microsoft builds. 8 is an LTS line too, and Microsoft points to Temurin for it.
 FLOOR = 11
 
+# Where the JDK proper is, inside what the archive unpacks to. A macOS JDK is a bundle, and the tree
+# a daemon reads — `bin`, `lib`, `release` — is its `Contents/Home`. Nothing is moved out of it:
+# *repack, do not rearrange*, and `provides` absorbs the difference.
+MACOS_HOME = "Contents/Home"
+
+# Removed, relative to the home, where present. Each is read by something that is not in the archive:
+# `lib/src.zip` by an IDE, `include` by a C compiler building JNI code, `man` by `man`.
+REMOVED = ("lib/src.zip", "include", "man")
+
+COMMANDS = ("java", "javac", "jar", "jshell", "keytool", "jlink")
+
 
 def lines() -> list[int]:
     """The LTS lines at or above the floor, newest last, as Adoptium's release document states them.
@@ -141,3 +152,92 @@ def resolve(spec: str, target: tuple[str, str]) -> dict:
             f"{', '.join(entry['version'] for entry in releases)}"
         )
     return candidates[0]
+
+
+def home(tree: Path, operating_system: str) -> str:
+    """The JDK home relative to *tree*, as a POSIX prefix: ``""`` or ``"Contents/Home/"``."""
+    if operating_system != "macos":
+        return ""
+    if not (tree / MACOS_HOME / "release").is_file():
+        raise SystemExit(f"a macOS JDK was expected to have its home at {MACOS_HOME}; it does not")
+    return f"{MACOS_HOME}/"
+
+
+def prune(tree: Path, operating_system: str) -> list[str]:
+    """Remove what no process in the JDK reads, and answer with what went, as POSIX paths.
+
+    **A delete-list, and a short one**, because almost all of a JDK is read by the JVM: `lib/modules`
+    on every start, the CDS archives when the VM maps them, `jmods/` when `jlink` runs. What is left
+    is a handful of names that mean the same thing on every line, plus every `.lib` under `lib/` —
+    `jvm.lib` and `jawt.lib` on every Windows cell measured, named by suffix so a third is caught.
+    """
+    prefix = home(tree, operating_system)
+    doomed = [tree / f"{prefix}{name}" for name in REMOVED]
+    doomed += sorted((tree / f"{prefix}lib").glob("*.lib"))
+
+    removed: list[str] = []
+    freed = 0
+    for path in doomed:
+        if not path.exists():
+            continue
+        if path.is_dir():
+            freed += sum(child.stat().st_size for child in path.rglob("*") if child.is_file())
+            shutil.rmtree(path)
+        else:
+            freed += path.stat().st_size
+            path.unlink()
+        removed.append(path.relative_to(tree).as_posix())
+
+    print(f"dropped {', '.join(removed) or 'nothing'} ({freed:,} bytes)")
+    return removed
+
+
+def vcredist(tree: Path) -> str | None:
+    """The Visual C++ redistributable a Windows JDK needs, which is expected to be none.
+
+    **Not `mongodb.vcredist`, because the question is not the same.** That one reads the import table
+    and declares a runtime whenever one is imported. Every Microsoft JDK imports `vcruntime140.dll`
+    and `msvcp140.dll` — and ships both, beside `jvm.dll` in `bin/`, with `ucrtbase.dll` on 21 and
+    25. A runtime the archive carries is not a precondition of the machine, so what is declared is
+    the set that is imported **and absent from the tree**.
+    """
+    binaries = relocate.machine_files(tree, directories=("bin",))
+    shipped = {path.name.lower() for path in binaries}
+    imported = {name.lower() for path in binaries for name in relocate.pe_imports(path)}
+    runtime = sorted(name for name in imported if name.startswith(("vcruntime140", "msvcp140")))
+    missing = [name for name in runtime if name not in shipped]
+    print(f"imports {', '.join(runtime) or 'no VC++ runtime'}; "
+          f"{'missing ' + ', '.join(missing) if missing else 'all of it shipped in bin/'}")
+    return "2022" if missing else None
+
+
+def describe(
+    tree: Path, entry: dict, target: tuple[str, str], removed: list[str], changed: dict[str, str],
+) -> dict:
+    """What is in the archive, as the daemon will read it."""
+    operating_system, arch = target
+    prefix = home(tree, operating_system)
+    suffix = ".exe" if operating_system == "windows" else ""
+    provides = {name: f"{prefix}bin/{name}{suffix}" for name in COMMANDS}
+    missing = [name for name, path in provides.items() if not (tree / path).exists()]
+    if missing:
+        raise SystemExit(f"the archive provides no {', '.join(missing)} under {prefix or '.'}bin/")
+
+    manifest = {
+        "schema": 1,
+        "kind": "java",
+        "version": entry["version"],
+        "os": operating_system,
+        "arch": arch,
+        "source": "borrowed",
+        "upstream": {
+            "url": entry["url"],
+            "sha256": entry["sha256"],
+            "verified_against": "the Adoptium Marketplace entry Microsoft publishes, and Microsoft's "
+                                ".sha256sum.txt beside the archive, both over HTTPS",
+            "project": "microsoft/openjdk",
+            "release": entry["release"],
+        },
+        "provides": provides,
+    }
+    return borrow.declare(tree, manifest, removed=removed, changed=changed)
