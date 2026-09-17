@@ -213,6 +213,17 @@ anything is added here.
 See [the design](superpowers/specs/2026-09-15-mongodb-packaging-design.md) and
 [packages/mongodb.md](packages/mongodb.md#the-shell-is-a-different-package).
 
+### [~] P20 — Java
+
+Microsoft Build of OpenJDK, LTS lines 11, 17, 21 and 25, six cells each, every cell borrowed.
+`tools/java.py` and `build-java.yml` are written, and the Windows x86_64 cells of 11.0.32.1 and
+21.0.12.1 pack, pass `parity.py` and index cleanly on a development machine. What is left is what only
+runners can say — the glibc and macOS floors, and whether the macOS JDK still runs with files removed
+from inside its signed bundle — and then publishing the four lines.
+
+See [the design](superpowers/specs/2026-09-17-java-packaging-design.md) and
+[packages/java.md](packages/java.md).
+
 ---
 
 ## Working on this file

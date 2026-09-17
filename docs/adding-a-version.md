@@ -27,6 +27,9 @@ python3 tools/ruby_unix.py --version 3.4 --out dist/
 # Go: one recipe for every target; it builds and runs a program from the moved tree before publishing
 python tools/go.py --version 1.27 --out dist/
 
+# Java: Microsoft Build of OpenJDK, LTS lines only; it compiles, runs and jlinks from the moved tree
+python tools/java.py --version 21 --out dist/
+
 # Caddy: one recipe for every target, and it runs the server it packed before publishing it
 python tools/caddy.py --version 2 --out dist/
 
@@ -72,7 +75,7 @@ python tools/permanence.py --slices 1    # hash all of it, which is a six-gigaby
 ```
 
 In practice none of that is run by hand: `.github/workflows/build-php.yml` takes a version, picks the
-recipe from it and produces every target; `build-node.yml`, `build-python.yml`, `build-go.yml`, `build-caddy.yml`, `build-composer.yml`,
+recipe from it and produces every target; `build-node.yml`, `build-python.yml`, `build-go.yml`, `build-java.yml`, `build-caddy.yml`, `build-composer.yml`,
 `build-redis.yml`, `build-memcached.yml` and `build-nginx.yml` do the same with one recipe and six;
 `build-ruby.yml` runs six legs across two recipes; and `publish-index.yml` regenerates and signs the
 index from every release that exists. Two run on a clock rather than on a request — `check-eol.yml`
