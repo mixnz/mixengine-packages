@@ -2154,6 +2154,42 @@ repository's work either way.
 
 See [packages/mongodb.md](packages/mongodb.md#the-shell-is-a-different-package).
 
+### [x] P21 — Valkey, the Redis row's BSD continuation
+
+Five lines — 7.2.14, 8.0.11, 8.1.10, 9.0.6 and 9.1.2 — built from upstream's tarballs and published on
+2026-09-17: 24 cells, every Unix cell of every line and Windows x86_64 from 8.0. The recipe is
+`tools/valkey.py`; the reasoning is [the design](superpowers/specs/2026-09-17-valkey-packaging-design.md)
+and [packages/valkey.md](packages/valkey.md).
+
+**A second kind was the answer to a question P8 had asked the wrong way round.** P8 considered Valkey
+only as a way to fill Redis's Windows cell and refused it, rightly. Asked as its own row, the argument is
+the Redis floor's: 7.2 is the last BSD-3 Redis, and Valkey is BSD-3 on every line.
+
+**The Cygwin half is imported, not copied.** Finding Cygwin and proving it is not MSYS2, running under
+it with its own `PATH`, reading `DEPENDENCY_TARGETS` out of the tarball, and the two `CFLAGS` its
+headers need all stay in `redis.py`; `valkey.py` owns only names, licences and the smoke test. Reading
+five tarballs before writing it is what made that split safe: `DEPENDENCY_TARGETS` differs on three of
+them — `hiredis` becomes `libvalkey` at 9.0, and Lua leaves the list at 9.1 while staying in the server
+as a statically linked module — which is exactly the variation `redis.dependency_targets` was written to
+read rather than assume. Two things were Valkey's alone: every line installs `redis-*` links unless told
+`USE_REDIS_SYMLINKS=no`, and every line's `INFO` reports a `redis_version` for clients that is not the
+archive's version, so the smoke test reads `valkey_version` and runs an `EVAL`.
+
+**The spec predicted the one red leg, and the first run confirmed it without being told.** Valkey 7.2
+is Redis 7.2's code, and on the first `release: false` run its Windows cell compiled, linked, bundled
+`cygwin1.dll` and then exited 2816 — `0xB00`, SIGSEGV — on `valkey-server --version`, the fault
+`redis.WINDOWS_FLOOR` records. 8.0 through 9.1 were green on the same runner in the same hour, bundling
+`cyggcc_s-seh-1.dll` beside `cygwin1.dll`. So `WINDOWS_FLOOR` is 8.0, stated with that evidence, and
+nothing is patched.
+
+**One sentence written too early.** The roadmap first said the run was green on 29 cells; it was 24 —
+four for 7.2 and five for each of the other four lines — and was corrected before anything was published.
+
+**What it shares with every built row here, and did not decide.** The macOS cells need 14.0 on Apple
+Silicon and 15.0 on Intel, which is the runner's own version: no built recipe in this repository sets
+`MACOSX_DEPLOYMENT_TARGET`, and Redis, Memcached, nginx and MariaDB carry the same two floors. Valkey
+matches its siblings rather than being the one row that differs.
+
 ---
 
 ## The tools

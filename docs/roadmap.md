@@ -32,6 +32,7 @@ about.
 | PostgreSQL | 14 – newest, 5 of 6 targets | `postgres`, `postgres_deb` | yes — P7, P7a and P7b, and it is the first row packed under the rule |
 | Go | 1.21 – newest, 6 targets | `go` | yes — P19, measured before it was written |
 | Java | 11, 17, 21, 25, 6 targets | `java` | yes — P20 |
+| Valkey | 7.2 – newest, 5 of 6 targets | `valkey` | yes — P21 |
 
 The rule was written **after** MariaDB, because MariaDB is what taught it: three routes to one
 version produced three different feature sets, and fixing that is what
@@ -74,7 +75,7 @@ packs correctly; what they do not do is *choose*, and choosing once is the whole
 
 ## What each task settled
 
-Thirty-six tasks are closed. Each one is kept whole in
+Thirty-seven tasks are closed. Each one is kept whole in
 [`roadmap-history.md`](roadmap-history.md), because what a task found is usually worth more than
 the fact that it is finished; this is the index into it, in the order the tasks were written.
 
@@ -111,6 +112,7 @@ the fact that it is finished; this is the index into it, in the order the tasks 
 | **P14** | MySQL: five lines, and eight cells compiled here because Oracle withdrew macOS while those lines were still alive. |
 | **P18** | MongoDB: five LTS lines borrowed from 6.0, a Windows zip that was 91% debug symbols, and seven things only CI could find. |
 | **P18a** | `mongosh` published, and a requirement no smoke test could see — the library nothing loads until someone needs it. |
+| **P21** | Valkey: Redis's build with Valkey's names, the Cygwin half imported rather than copied, and a 7.2 Windows cell empty for Redis 7.2's reason. |
 
 **The tools**
 
@@ -214,16 +216,6 @@ anything is added here.
 
 See [the design](superpowers/specs/2026-09-15-mongodb-packaging-design.md) and
 [packages/mongodb.md](packages/mongodb.md#the-shell-is-a-different-package).
-
-### [~] P21 — Valkey
-
-Five lines, 7.2 to 9.1, built from source like Redis; Windows x86_64 from 8.0. `tools/valkey.py` and
-`build-valkey.yml` are written and a `release: false` run of every line is green: 24 cells, and 7.2's
-Windows cell empty because it faults in its own startup under Cygwin exactly as Redis 7.2 does. What is
-left is publishing the five lines.
-
-See [the design](superpowers/specs/2026-09-17-valkey-packaging-design.md) and
-[packages/valkey.md](packages/valkey.md).
 
 ### [~] P22 — Meilisearch
 

@@ -261,6 +261,20 @@ the version banner, traced on the runner — while the same code runs in 7.4. Ne
 source nor building that one line at a different optimisation level is something this repository
 will do, so Windows starts at 7.4 and 7.2 ships the four cells it can.
 
+### [Valkey](docs/packages/valkey.md)
+
+| Version | macOS aarch64 | macOS x86_64 | Linux x86_64 | Linux aarch64 | Windows x86_64 | Windows aarch64 |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **7.2** | ✅ | ✅ | ✅ | ✅ | — | — |
+| **8.0** | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| **8.1** | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| **9.0** | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| **9.1** | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+
+The Redis row's BSD continuation: Valkey forked from Redis 7.2.4 and is BSD-3-Clause on every line,
+built here the way Redis is. The two empty Windows columns are Redis's too — no Cygwin for ARM64, and
+7.2 faulting in its own startup under Cygwin, because Valkey 7.2 is that code.
+
 ### [Memcached](docs/packages/redis-memcached.md)
 
 | Version | macOS aarch64 | macOS x86_64 | Linux x86_64 | Linux aarch64 | Windows x86_64 | Windows aarch64 |
@@ -314,7 +328,7 @@ index, so that cell is empty.
   and almost none of it about PHP. Read it before opening any **built** cell.
 - **[Roadmap](docs/roadmap.md)** — where the pipeline stands, and what is left: a PostgreSQL cell
   waiting on an upstream release, and MongoDB, which is evaluated and not yet packed.
-- **[What each task settled](docs/roadmap-history.md)** — the thirty-six that are closed, kept whole
+- **[What each task settled](docs/roadmap-history.md)** — the thirty-seven that are closed, kept whole
   and in the order they were written, because what a task found outlasts the fact that it is done.
 
 ## Licences
