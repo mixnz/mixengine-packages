@@ -395,3 +395,72 @@ def smoke(tree: Path, version: str, provides: dict[str, str]) -> dict:
             "valkey-cli shutdown nosave",
         ],
     }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--version", required=True,
+        help="exact version (9.1.2), a line (9 or 9.1) for its newest release, or 'latest'",
+    )
+    parser.add_argument("--out", default=Path("dist"), type=Path)
+    arguments = parser.parse_args()
+
+    operating_system, arch = borrow.host("Valkey")
+    if operating_system == "windows" and arch != "x86_64":
+        borrow.unavailable(
+            "no Cygwin for Windows on ARM, and Valkey needs one: like Redis it is a POSIX program with "
+            "no Windows build of any kind, compiled here against a POSIX runtime rather than ported. "
+            "An artifact labelled aarch64 may not hold x86_64 binaries run under emulation."
+        )
+
+    work = Path(tempfile.mkdtemp(prefix="mixengine-valkey-"))
+    version, source_tree, digest, url = source(arguments.version, work)
+    print(f"building Valkey {version} for {operating_system}/{arch}")
+
+    # A staging prefix: Valkey, like Redis, compiles no path into anything.
+    prefix = work / f"prefix-{version}"
+    asked = build(source_tree, prefix)
+    tree, provides = assemble(prefix, work, source_tree)
+    strip.debug(tree)
+
+    runtime = ""
+    if operating_system == "windows":
+        # Beside the executables, for the reason `redis.py` gives: the PE loader looks in the image's
+        # own directory first, so the copy is the whole of the redirection.
+        bundled = relocate.bundle(tree, libdir="bin", search=[redis.cygwin_root() / "bin"])
+        if not bundled:
+            raise SystemExit("nothing was bundled, and a Cygwin build imports cygwin1.dll by construction")
+        print(f"bundled {len(bundled)} librar{'y' if len(bundled) == 1 else 'ies'}: "
+              f"{', '.join(sorted(bundled))}")
+        relocate.bundled_licences(tree, bundled)
+        runtime = f"; POSIX runtime supplied by Cygwin ({', '.join(sorted(bundled))}, LGPLv3)"
+
+    manifest = {
+        "schema": 1,
+        "kind": "valkey",
+        "version": version,
+        "os": operating_system,
+        "arch": arch,
+        "source": "built",
+        "recipe": (
+            f"valkey-{version}.tar.gz from source (sha256 {digest[:12]}…, as published in "
+            f"valkey-io/valkey-hashes); {'; '.join(asked)}; core only — no modules beyond the "
+            f"static Lua engine, no TLS, no RDMA{runtime}"
+        ),
+        "provides": provides,
+    }
+    measured = relocate.floor(tree)
+    if measured:
+        manifest["requires"] = {measured[0]: measured[1]}
+        print(f"needs {measured[0]} {measured[1]} or newer")
+
+    manifest["smoke"] = smoke(tree, version, provides)
+    print(f"built from {url}")
+
+    borrow.publish(tree, manifest, arguments.out, "zip" if operating_system == "windows" else "tar")
+    shutil.rmtree(work, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    main()
