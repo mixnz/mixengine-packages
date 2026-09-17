@@ -121,3 +121,69 @@ def resolve(spec: str, target: tuple[str, str]) -> tuple[str, str, str]:
     if not digest.startswith("sha256:") or len(digest) != len("sha256:") + 64:
         raise SystemExit(f"v{version}'s {asset} carries no SHA-256 digest in the release API: {digest!r}")
     return version, assets[asset]["browser_download_url"], digest.removeprefix("sha256:")
+
+
+def binary_name(operating_system: str) -> str:
+    """What the executable is called inside the artifact: upstream's asset, less its target suffix.
+
+    A bare file has no layout to preserve, so this is the least renaming that makes `provides` say
+    the same thing on every cell — the precedent is Composer's `composer.phar`.
+    """
+    return "meilisearch.exe" if operating_system == "windows" else "meilisearch"
+
+
+def licence(tree: Path, version: str) -> str:
+    """Write the MIT licence of this release into *tree*, and answer with its name.
+
+    From the release's own tag rather than from `main`, so the text is the one that release shipped
+    under. `LICENSE-EE` is not fetched: its absence is the point of taking the Community binary.
+    """
+    try:
+        text = borrow.fetch(f"{RAW}/v{version}/{LICENCE}")
+    except urllib.error.HTTPError as error:
+        raise SystemExit(f"v{version} has no {LICENCE} at its tag ({error.code})") from error
+    if b"MIT License" not in text and b"Permission is hereby granted" not in text:
+        raise SystemExit(f"{LICENCE} at v{version} does not read as the MIT licence")
+    (tree / LICENCE).write_bytes(text)
+    return LICENCE
+
+
+def vcredist(binary: Path) -> str | None:
+    """`2022` when the Windows executable imports the Visual C++ runtime, which 1.53.2's does.
+
+    Upstream ships nothing beside the executable, so an imported runtime is always the machine's
+    precondition — there is no bundled copy to discount, unlike the JDK.
+    """
+    imported = [name.lower() for name in relocate.pe_imports(binary)]
+    runtime = sorted(name for name in imported if name.startswith(("vcruntime140", "msvcp140")))
+    print(f"imports {', '.join(runtime) or 'no VC++ runtime'}")
+    return "2022" if runtime else None
+
+
+def describe(
+    tree: Path, version: str, target: tuple[str, str], url: str, digest: str,
+    added: list[str], changed: dict[str, str],
+) -> dict:
+    """What is in the artifact, as the daemon will read it."""
+    operating_system, arch = target
+    name = binary_name(operating_system)
+    if not (tree / name).is_file():
+        raise SystemExit(f"the artifact provides no {name}")
+    manifest = {
+        "schema": 1,
+        "kind": "meilisearch",
+        "version": version,
+        "os": operating_system,
+        "arch": arch,
+        "source": "borrowed",
+        "upstream": {
+            "url": url,
+            "sha256": digest,
+            "verified_against": "the sha256 digest GitHub's release API states for the asset; "
+                                "Meilisearch publishes no checksums of its own",
+            "project": "meilisearch/meilisearch",
+            "variant": "Community Edition, built without --features enterprise",
+        },
+        "provides": {"meilisearch": name},
+    }
+    return borrow.declare(tree, manifest, added=added, changed=changed)
