@@ -200,7 +200,12 @@ and the machine-readable table that exists is `endoflife.date`, a third-party mi
    tree in `Contents/Home`, and `man/` exists on the Unix cells of 11 and 17 only.
 2. ~~Import tables on Windows~~ — measured on x64 25 and ARM64 11: the C runtime is bundled.
 3. The glibc floor of `libjvm.so` on both Linux architectures, and the macOS floor on both — only a
-   runner of that OS can read them with `relocate.floor`.
+   runner of that OS can read them with `relocate.floor`. The macOS floor came back **11.0** on both
+   architectures of 11 and 25. The Linux answer was not a floor but a refusal: **the Linux JDK links
+   `libz`, `freetype`, X11 and ALSA from the system**, which `relocate.verify` reports as reaching
+   outside the tree. Decided after that run: they are declared in a new optional
+   `requires.libraries` (sonames from `DT_NEEDED`), not bundled — see
+   [packages/java.md](../../packages/java.md#what-a-linux-jdk-expects-of-the-machine).
 4. ~~DWARF~~ — measured: none on any cell examined.
 5. ~~Marketplace completeness~~ — measured: complete and symmetric.
 

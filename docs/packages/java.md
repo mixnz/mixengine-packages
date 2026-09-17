@@ -68,6 +68,21 @@ path before any of them, and the loader answers their import with the module alr
 `relocate.verify` models a file search and reports those imports as unresolved, so `java.verify` sets
 aside exactly that complaint, and only while the VM is in `server/` where the launcher looks.
 
+## What a Linux JDK expects of the machine
+
+**The first CI run refused all four Linux cells, and it was right to.** Microsoft links a Linux JDK
+against the distribution's libraries and ships none of them: `libz.so.1` is imported by every launcher
+and by `libjli`, so no JVM starts without it; `libfreetype.so.6` by `libfontmanager`, which renders
+text headless or not; the X11 family by AWT and the splash screen; `libasound.so.2` by `javax.sound`.
+Temurin is built the same way.
+
+They are **declared, not bundled** — carrying a stranger's X11 stack in a runtime forever is the wrong
+trade, and bundling `libz` alone would raise the glibc floor to the runner's. So the manifest states
+them in `requires.libraries`, an optional field the index schema gained for this row: the sonames read
+out of each binary's own `DT_NEEDED`, which is what Microsoft linked rather than what one
+distribution's loader pulled in behind it. `java.verify` sets exactly those aside, and a release that
+links something new is refused until somebody has read what it is.
+
 ## What is proven
 
 From a directory the tree has been moved to, with every `JAVA*`, `JDK_*`, `_JAVA*` and `CLASSPATH`

@@ -29,6 +29,7 @@ import hashlib
 import json
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import urllib.error
@@ -272,6 +273,23 @@ def directories(operating_system: str) -> tuple[str, ...]:
     return ("bin", "lib")
 
 
+# **What a Linux JDK expects the machine to have**, which Microsoft links dynamically and does not
+# ship — measured on the first CI run of 25.0.4.1 and 11.0.32.1, identical on x86_64 and aarch64.
+# `libz` is imported by every launcher and by `libjli`, so no JVM starts without it; `freetype` and
+# what it pulls in are `libfontmanager`'s, loaded when text is rendered, headless or not; the X11
+# family is AWT's and the splash screen's; `libasound` is `javax.sound`'s. This is how every Linux
+# JDK is built, Temurin's included, and it is declared rather than bundled — see `requires.libraries`
+# in the index schema. The set names what the runner's loader resolved, transitive libraries
+# included, so it is what `verify` sets aside; what is *declared* is only what the JDK's own files
+# name, measured by `system_libraries`.
+LINUX_SYSTEM_LIBRARIES = frozenset({
+    "libz.so.1",
+    "libfreetype.so.6", "libpng16.so.16", "libbz2.so.1.0", "libbrotlidec.so.1", "libbrotlicommon.so.1",
+    "libX11.so.6", "libXext.so.6", "libXi.so.6", "libXrender.so.1", "libXtst.so.6",
+    "libxcb.so.1", "libXau.so.6", "libXdmcp.so.6", "libbsd.so.0", "libmd.so.0",
+    "libasound.so.2",
+})
+
 # The VM itself, relative to the home, per OS.
 JVM = {
     "windows": "bin/server/jvm.dll",
@@ -293,6 +311,11 @@ def verify(tree: Path, operating_system: str) -> list[str]:
     So exactly that complaint is set aside, and only when the VM is where the launcher will look for
     it. Every other unresolved or escaping reference still fails the check, including one to the VM
     from a tree whose `server/` is missing it.
+
+    **On Linux, the system libraries in `LINUX_SYSTEM_LIBRARIES` are set aside too**, whether the
+    runner's loader found them outside the tree or not at all: they are the machine's precondition,
+    declared in `requires.libraries`, not something the tree was supposed to contain. A library that
+    is not on that list still fails the check, which is what keeps the list honest.
     """
     prefix = home(tree, operating_system)
     vm = tree / f"{prefix}{JVM[operating_system]}"
@@ -300,7 +323,46 @@ def verify(tree: Path, operating_system: str) -> list[str]:
     if not vm.is_file():
         return problems + [f"the VM is not at {prefix}{JVM[operating_system]}, where the launcher loads it"]
     unresolved_vm = re.compile(rf"[^:]+: (?:\S*/)?{re.escape(vm.name)} does not resolve")
-    return [problem for problem in problems if not unresolved_vm.fullmatch(problem)]
+    problems = [problem for problem in problems if not unresolved_vm.fullmatch(problem)]
+    if operating_system == "linux":
+        system = re.compile(r"[^:]+: (\S+) (?:does not resolve|resolves outside the tree, to \S+)")
+        problems = [
+            problem for problem in problems
+            if not ((match := system.fullmatch(problem))
+                    and Path(match.group(1)).name in LINUX_SYSTEM_LIBRARIES)
+        ]
+    return problems
+
+
+def system_libraries(tree: Path) -> list[str]:
+    """The sonames the JDK's own files name and neither ship nor count as the C runtime.
+
+    Read out of each file's dynamic section with `readelf -d`, not out of `ldd`, because `ldd`
+    answers with everything the runner's loader pulled in — `libXau` through `libX11`, `libmd` through
+    `libbsd` — and those are the distribution's business, not this archive's. What is declared is what
+    Microsoft linked against. Anything outside `LINUX_SYSTEM_LIBRARIES` is refused: a new dependency
+    in a new release is a precondition somebody has to read before it is published.
+    """
+    files = relocate.machine_files(tree, directories=directories("linux"))
+    shipped = {path.name for path in tree.rglob("*.so*")}
+    needed: set[str] = set()
+    for path in files:
+        listing = subprocess.run(["readelf", "-d", str(path)], capture_output=True, text=True,
+                                 check=True).stdout
+        needed.update(re.findall(r"\(NEEDED\)\s+Shared library: \[([^\]]+)\]", listing))
+    external = sorted(
+        name for name in needed
+        if name not in shipped and name not in relocate.SYSTEM_SONAMES
+        and not name.startswith("ld-linux")
+    )
+    unknown = [name for name in external if name not in LINUX_SYSTEM_LIBRARIES]
+    if unknown:
+        raise SystemExit(
+            f"this JDK links {', '.join(unknown)} from the system, which no release measured before "
+            f"did. Add it to LINUX_SYSTEM_LIBRARIES with the reason, or find out why it is new."
+        )
+    print(f"expects the system to provide {', '.join(external)}")
+    return external
 
 
 def smoke(tree: Path, version: str, manifest: dict, target: tuple[str, str]) -> dict:
@@ -439,10 +501,15 @@ def main() -> None:
             manifest["requires"] = {"vcredist": needed}
             print(f"needs the Visual C++ {needed} redistributable")
     else:
+        requires = {}
         measured = relocate.floor(tree, directories=directories(operating_system))
         if measured:
-            manifest["requires"] = {measured[0]: measured[1]}
+            requires[measured[0]] = measured[1]
             print(f"needs {measured[0]} {measured[1]} or newer")
+        if operating_system == "linux":
+            requires["libraries"] = system_libraries(tree)
+        if requires:
+            manifest["requires"] = requires
 
     borrow.publish(tree, manifest, args.out, suffix)
     shutil.rmtree(work, ignore_errors=True)
