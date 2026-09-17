@@ -303,6 +303,17 @@ Upstream's only Windows build is a 32-bit x86 one, which runs natively under WOW
 x86_64 cell borrows. Putting it in an archive whose manifest says `aarch64` would be a lie in the
 index, so that cell is empty.
 
+### [Apache httpd](docs/packages/httpd.md)
+
+| Version | macOS aarch64 | macOS x86_64 | Linux x86_64 | Linux aarch64 | Windows x86_64 | Windows aarch64 |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **2.4** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+The row that reads `.htaccess`, which neither nginx nor Caddy does. Every cell is compiled: the ASF
+publishes source only, and the Windows build everybody uses states its digests by mail on request
+and rebuilds one version number into several programs. Twenty modules, the same twenty everywhere,
+and PHP is reached through `mod_proxy_fcgi` rather than a `mod_php` no PHP row here can supply.
+
 ## The rules every row above answers to
 
 - **[Borrow before you build](docs/borrow-before-you-build.md)** — an artifact is repacked from a
