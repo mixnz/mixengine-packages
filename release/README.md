@@ -94,6 +94,7 @@ command above.
 | `caddy` | `release/build.sh caddy latest` | a line, an exact version, or `latest` |
 | `nginx` | `release/build.sh nginx 1.30` | `1.30` is stable, `1.31` is mainline |
 | `redis` | `release/build.sh redis 8.10` | a line, an exact version, or `latest` |
+| `valkey` | `release/build.sh valkey 9.1` | a line, an exact version, or `latest`; 7.2 upwards |
 | `memcached` | `release/build.sh memcached 1.6` | a line, an exact version, or `latest` |
 | `mariadb` | `release/build.sh mariadb` | a list; empty means `all`, every supported series |
 | `postgres` | `release/build.sh postgres` | a list; empty means `all`, every supported major |
