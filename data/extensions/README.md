@@ -22,16 +22,13 @@ phpMyAdmin `5.2.3` and Adminer `6.0.1`. Each names an upstream artifact by URL,
 SHA-256 and size — none of these files is a mirror, and this repository publishes
 none of their bytes.
 
-**MixDB `0.0.28` is the fourth, and it names no artifact at all** — MixEngine's
-task T84. A `desktop-app` is an application MixEngine *finds* on the machine and
-hands a connection to; it never downloads or runs an installer, because MixDB
-publishes installers rather than archives, because running one would be arbitrary
-code, and because MixDB updates itself and MixEngine would only ever be a second,
-later updater. So that entry carries `[desktop-app].scheme`, the per-OS
-`[desktop-app.detect]` hints, and `homepage` — where to get it. What goes stale in
-it is the version and the hints, and neither breaks anything while it is late:
-`extension.plan` answers the machine separately, so the version there is read as
-the entry's.
+**MixDB, the fourth, is withdrawn.** It arrived with MixEngine's task T84 as a
+`desktop-app` entry: an application MixEngine *finds* on the machine and hands a
+connection to, naming no artifact. MixDB then became MixEngine's own window, MixLab
+(phase 12), which ships in every installer and takes `mix database open` without
+any extension — so an entry offering to find it was offering the application
+already running. `git log -- data/extensions/mixdb.toml` has the manifest as it
+was.
 
 **A version here is upstream's, and this file is what goes stale.** Raising one
 means a new `url`, a new `sha256` and a new `size`, and for phpMyAdmin also
