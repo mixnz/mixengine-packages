@@ -303,3 +303,63 @@ def smoke(tree: Path, version: str, manifest: dict) -> dict:
             "the server stopped",
         ],
     }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--version", required=True,
+        help="an exact version (1.53.2), a minor (1.53) or major (1) for its newest release, or 'latest'",
+    )
+    parser.add_argument("--out", default="dist", type=Path)
+    args = parser.parse_args()
+
+    target = borrow.host("Meilisearch")
+    operating_system = target[0]
+    version, url, expected = resolve(args.version, target)
+    if version != args.version:
+        print(f"{args.version} resolved to {version}")
+    eol.announce("meilisearch", version)
+
+    work = Path(tempfile.mkdtemp(prefix="mixengine-meilisearch-"))
+    tree = work / "tree"
+    tree.mkdir()
+    binary = tree / binary_name(operating_system)
+    print(f"borrowing {url}")
+    try:
+        urllib.request.urlretrieve(url, binary)
+    except urllib.error.HTTPError as error:
+        raise SystemExit(f"{url} answered {error.code}") from error
+
+    actual = borrow.sha256(binary)
+    if actual != expected:
+        raise SystemExit(f"sha256 mismatch: got {actual}, the release API states {expected}")
+    print(f"sha256 {actual} (verified against the digest GitHub's release API states)")
+    if operating_system != "windows":
+        binary.chmod(0o755)
+
+    added = [licence(tree, version)]
+    # Expected to change nothing: neither 1.53.1 nor 1.53.2 carries debug information, and the size
+    # of the newer one is embedded data. Called so that a release which differs is declared.
+    changed = strip.debug(tree)
+
+    manifest = describe(tree, version, target, url, actual, added, changed)
+    manifest["smoke"] = smoke(tree, version, manifest)
+
+    if operating_system == "windows":
+        needed = vcredist(binary)
+        if needed:
+            manifest["requires"] = {"vcredist": needed}
+            print(f"needs the Visual C++ {needed} redistributable")
+    else:
+        measured = relocate.floor(tree, directories=("",))
+        if measured:
+            manifest["requires"] = {measured[0]: measured[1]}
+            print(f"needs {measured[0]} {measured[1]} or newer")
+
+    borrow.publish(tree, manifest, args.out, "zip" if operating_system == "windows" else "tar.gz")
+    shutil.rmtree(work, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    main()
