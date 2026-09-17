@@ -215,6 +215,16 @@ anything is added here.
 See [the design](superpowers/specs/2026-09-15-mongodb-packaging-design.md) and
 [packages/mongodb.md](packages/mongodb.md#the-shell-is-a-different-package).
 
+### [~] P21 — Valkey
+
+Five lines, 7.2 to 9.1, built from source like Redis; Windows x86_64 from 8.0. `tools/valkey.py` and
+`build-valkey.yml` are written and a `release: false` run of every line is green: 29 cells, and 7.2's
+Windows cell empty because it faults in its own startup under Cygwin exactly as Redis 7.2 does. What is
+left is publishing the five lines.
+
+See [the design](superpowers/specs/2026-09-17-valkey-packaging-design.md) and
+[packages/valkey.md](packages/valkey.md).
+
 ### [~] P22 — Meilisearch
 
 The Community Edition binary on five cells, packed on demand from the newest release.

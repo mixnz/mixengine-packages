@@ -60,6 +60,9 @@ python3 tools/postgres_deb.py --version 18 --out dist/    # Linux, out of the pr
 python3 tools/redis.py --version 8 --out dist/
 python3 tools/memcached.py --version 1.6 --out dist/
 
+# Valkey: Redis's build with Valkey's names, and the Cygwin half imported from redis.py
+python3 tools/valkey.py --version 9.1 --out dist/
+
 # nginx: one recipe that borrows on Windows and compiles on Unix, against the configure line it
 # reads off the borrowed binary. Needs a gpg — nginx signs its releases and hashes none of them
 python tools/nginx.py --version 1.30 --out dist/
@@ -79,7 +82,7 @@ python tools/permanence.py --slices 1    # hash all of it, which is a six-gigaby
 
 In practice none of that is run by hand: `.github/workflows/build-php.yml` takes a version, picks the
 recipe from it and produces every target; `build-node.yml`, `build-python.yml`, `build-go.yml`, `build-java.yml`, `build-meilisearch.yml`, `build-caddy.yml`, `build-composer.yml`,
-`build-redis.yml`, `build-memcached.yml` and `build-nginx.yml` do the same with one recipe and six;
+`build-redis.yml`, `build-valkey.yml`, `build-memcached.yml` and `build-nginx.yml` do the same with one recipe and six;
 `build-ruby.yml` runs six legs across two recipes; and `publish-index.yml` regenerates and signs the
 index from every release that exists. Two run on a clock rather than on a request — `check-eol.yml`
 and `check-archive.yml` — and [dates](end-of-life-dates.md) and [the archive](the-archive.md) are
