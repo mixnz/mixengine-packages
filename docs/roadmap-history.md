@@ -2168,6 +2168,38 @@ Two lines published: `2.2` for a PHP older than 7.2.5, and `2` for everything ne
 
 ---
 
+## The runtimes
+
+### [x] P19 — Go
+
+Seven lines, 1.21 to 1.27, six cells each, every one of the 42 borrowed from go.dev and published on
+2026-09-17. The recipe is `tools/go.py`, one for every cell, and the reasoning is
+[the design](superpowers/specs/2026-09-17-go-packaging-design.md) and
+[packages/go.md](packages/go.md).
+
+**The whole task was one finding.** Go asks for nothing to be built or relocated, and the delete-list
+the evaluation expected — `api/`, `test/`, `doc/`, 7% of the tree — would have been the end of it,
+except that `borrow.publish` refused the first tree it was shown. Running `relocate.kind` and
+`strip.debug_sections` over 1.27.1 before writing the recipe found **53 binaries under
+`src/**/testdata`, 30 of them carrying DWARF**: the standard library's own test fixtures, which
+`strip.debug` would have "fixed" by rewriting. So every `testdata` directory goes too — 97 on 1.21.13
+rising to 115 removed paths on 1.27.1 — and the `.syso` objects linked into `-race` programs are asked
+for debug information *before* anything is stripped, so that one can never be rewritten to satisfy
+the check.
+
+**What only runners could say, and said on the first run.** Twelve legs of 1.21 and 1.27 with
+`release: false` came back green before anything was published: no cell stripped anything, no
+`.syso` carried DWARF on any platform, Linux declared no floor at all because the distributed `go` is
+static, and `parity.py` agreed across all six cells of both. The macOS floor is the one number that
+moves by line — 10.13 on Intel for 1.21 and 1.22, 11.0 on every other cell up to 1.24, 12.0 on 1.25
+and 1.26, 13.0 on 1.27 — and it is read off `LC_BUILD_VERSION` rather than written down.
+
+**What stays open is MixEngine's.** `go.env` ships `GOTOOLCHAIN=auto`, which lets a project's `go.mod`
+download and run a Go other than the one installed; the daemon renders `GOTOOLCHAIN=local`, and that
+is not decided here.
+
+---
+
 ## The index
 
 ### [x] P10 — End-of-life dates for every kind, not only MariaDB

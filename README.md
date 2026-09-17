@@ -111,6 +111,22 @@ absence.
 Windows borrows RubyInstaller, whose first ARM64 archive is in the 3.4 line; the four Unix cells are
 compiled here, because no publisher offers a relocatable Ruby for them.
 
+### [Go](docs/packages/go.md)
+
+| Version | macOS aarch64 | macOS x86_64 | Linux x86_64 | Linux aarch64 | Windows x86_64 | Windows aarch64 |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **1.21** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **1.22** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **1.23** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **1.24** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **1.25** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **1.26** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **1.27** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+Every cell borrowed from go.dev and none empty. The floor is 1.21 because that is where a Go release
+became a three-part version and the `go` command learned `GOTOOLCHAIN`, which MixEngine sets to
+`local` so a pinned version stays the one that builds.
+
 ### [Composer](docs/packages/composer.md)
 
 | Version | macOS aarch64 | macOS x86_64 | Linux x86_64 | Linux aarch64 | Windows x86_64 | Windows aarch64 |
@@ -285,7 +301,7 @@ index, so that cell is empty.
   and almost none of it about PHP. Read it before opening any **built** cell.
 - **[Roadmap](docs/roadmap.md)** — where the pipeline stands, and what is left: a PostgreSQL cell
   waiting on an upstream release, and MongoDB, which is evaluated and not yet packed.
-- **[What each task settled](docs/roadmap-history.md)** — the thirty-two that are closed, kept whole
+- **[What each task settled](docs/roadmap-history.md)** — the thirty-five that are closed, kept whole
   and in the order they were written, because what a task found outlasts the fact that it is done.
 
 ## Licences
