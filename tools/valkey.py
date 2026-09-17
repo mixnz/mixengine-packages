@@ -51,6 +51,15 @@ AGENT = redis.AGENT
 # The oldest line: the one Valkey forked, and still patched upstream.
 FLOOR = (7, 2)
 
+# **Windows starts at 8.0, and Valkey 7.2 says so the way Redis 7.2 did.** The first CI run of
+# 7.2.14 compiled cleanly under Cygwin, linked, bundled `cygwin1.dll`, and then `valkey-server.exe
+# --version` exited 2816 — `0xB00`, the wait status of a process killed by SIGSEGV — which is exactly
+# what `redis.WINDOWS_FLOOR` records for Redis 7.2.15 and traces to an access violation between
+# `time()` and the version banner. Valkey 7.2 is a fork of that same code, 8.0, 8.1, 9.0 and 9.1
+# build and pass the whole smoke test on the same runner in the same hour, and nothing here patches
+# the source or builds one line with different flags, so the cell is empty with this as its reason.
+WINDOWS_FLOOR = (8, 0)
+
 SUFFIX = ".exe" if sys.platform == "win32" else ""
 
 # The four names the Redis row provides, in Valkey's spelling. The check tools are copies of the
@@ -416,6 +425,13 @@ def main() -> None:
 
     work = Path(tempfile.mkdtemp(prefix="mixengine-valkey-"))
     version, source_tree, digest, url = source(arguments.version, work)
+    if operating_system == "windows" and borrow.parts(version)[:2] < WINDOWS_FLOOR:
+        borrow.unavailable(
+            f"Valkey {version} compiles under Cygwin and then faults in its own startup: "
+            f"`valkey-server --version` is killed by SIGSEGV (exit 2816, 0xB00), as Redis 7.2 is, "
+            f"because 7.2 is that code. The four Unix cells of this version are packed. Windows "
+            f"starts at {'.'.join(map(str, WINDOWS_FLOOR))} — see WINDOWS_FLOOR in tools/valkey.py."
+        )
     print(f"building Valkey {version} for {operating_system}/{arch}")
 
     # A staging prefix: Valkey, like Redis, compiles no path into anything.
