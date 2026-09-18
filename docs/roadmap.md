@@ -33,6 +33,7 @@ about.
 | Go | 1.21 – newest, 6 targets | `go` | yes — P19, measured before it was written |
 | Java | 11, 17, 21, 25, 6 targets | `java` | yes — P20 |
 | Valkey | 7.2 – newest, 5 of 6 targets | `valkey` | yes — P21 |
+| Apache httpd | 2.4, 6 targets | `httpd`, `httpd_build` | yes — P23, every cell compiled |
 
 The rule was written **after** MariaDB, because MariaDB is what taught it: three routes to one
 version produced three different feature sets, and fixing that is what
@@ -75,7 +76,7 @@ packs correctly; what they do not do is *choose*, and choosing once is the whole
 
 ## What each task settled
 
-Thirty-seven tasks are closed. Each one is kept whole in
+Thirty-eight tasks are closed. Each one is kept whole in
 [`roadmap-history.md`](roadmap-history.md), because what a task found is usually worth more than
 the fact that it is finished; this is the index into it, in the order the tasks were written.
 
@@ -113,6 +114,7 @@ the fact that it is finished; this is the index into it, in the order the tasks 
 | **P18** | MongoDB: five LTS lines borrowed from 6.0, a Windows zip that was 91% debug symbols, and seven things only CI could find. |
 | **P18a** | `mongosh` published, and a requirement no smoke test could see — the library nothing loads until someone needs it. |
 | **P21** | Valkey: Redis's build with Valkey's names, the Cygwin half imported rather than copied, and a 7.2 Windows cell empty for Redis 7.2's reason. |
+| **P23** | Apache httpd: the `.htaccess` row, nothing borrowable to borrow, and a Windows build whose 32-bit base addresses ARM64 refuses. |
 
 **The tools**
 

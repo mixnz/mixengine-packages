@@ -339,7 +339,7 @@ and PHP is reached through `mod_proxy_fcgi` rather than a `mod_php` no PHP row h
   and almost none of it about PHP. Read it before opening any **built** cell.
 - **[Roadmap](docs/roadmap.md)** — where the pipeline stands, and what is left: a PostgreSQL cell
   waiting on an upstream release, and MongoDB, which is evaluated and not yet packed.
-- **[What each task settled](docs/roadmap-history.md)** — the thirty-seven that are closed, kept whole
+- **[What each task settled](docs/roadmap-history.md)** — the thirty-eight that are closed, kept whole
   and in the order they were written, because what a task found outlasts the fact that it is done.
 
 ## Licences

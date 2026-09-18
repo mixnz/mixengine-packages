@@ -2190,6 +2190,58 @@ Silicon and 15.0 on Intel, which is the runner's own version: no built recipe in
 `MACOSX_DEPLOYMENT_TARGET`, and Redis, Memcached, nginx and MariaDB carry the same two floors. Valkey
 matches its siblings rather than being the one row that differs.
 
+### [x] P23 — Apache httpd, the row that reads `.htaccess`
+
+httpd 2.4.68 compiled on **all six cells** and published on 2026-09-18, with APR 1.7.6, APR-util 1.6.5,
+OpenSSL 3.5.7, PCRE2 10.47, zlib 1.3.2, nghttp2 1.70.0 and expat 2.8.4 built from source beside it. The
+recipes are `tools/httpd.py` (Unix) and `tools/httpd_build.py` (Windows) with `tools/httpd_smoke.py`;
+the reasoning is [the design](superpowers/specs/2026-09-17-httpd-packaging-design.md) and
+[packages/httpd.md](packages/httpd.md).
+
+**Nothing is borrowed, and that was the evaluation rather than the assumption.** The ASF publishes
+source only; the Windows build everybody uses is Apache Lounge's, and it fails four separate tests a
+borrow here has to pass — digests sent by mail on request, one current build with no statement that
+older ones stay, a date suffix that turns one httpd version into several programs, and no statement
+about redistribution — before ARM64, which it does not build at all.
+
+**With nothing borrowed there is no `nginx -V` to copy, so the module set *is* the specification**, and
+it is checked on both sides of the pack: `modules/` against the list before packing, `httpd -M` after
+the tree has been moved. It came out at twenty rather than the spec's nineteen: `AddOutputFilterByType`,
+the one line everybody uses to switch `mod_deflate` on, is **`mod_filter`'s** directive in 2.4, so the
+set had the compressor and not the thing that turns it on.
+
+**Windows on ARM64 was the leg with no precedent, and the spec's sentence about it was wrong.** MSVC
+targets ARM64 natively; httpd's own Windows build does not. Three things, each measured on
+`windows-11-arm` and each answered without editing an upstream file: APR and APR-util declare a CMake
+minimum below 3.5 that CMake 4 refuses (`-DCMAKE_POLICY_VERSION_MINIMUM=3.5`); `os/win32/BaseAddr.ref`
+gives every DLL a 32-bit preferred load address and `link.exe` answers `LNK1355` at the first link, so
+the **generated** copy of that table has 4 GB added to each of its 125 addresses; and OpenSSL installs
+`openssl/applink.c` only for its x86 and x64 targets while `support/ab.c` includes it whenever OpenSSL
+was found, so it is copied out of OpenSSL's own source tree when the install did not leave one.
+
+**Three of the five other red legs were `configure` doing what it was told rather than what was
+meant.** `--enable-modules=none` switches off `mod_unixd` with everything else, and httpd then starts
+and refuses every connection with `AH00136` — found on both macOS cells. `mod_proxy` brings fourteen
+more modules with it, because a module whose default is its parent's follows the parent, so every
+module outside the set is disabled by name. And stripping has to happen on the install prefix before
+`relocate.bundle`: bundling copies APR's libraries out of the prefix over the tree's, so a tree
+stripped first gets its debug information back, while a tree stripped afterwards has been through
+`patchelf` and `strip` then changes a segment `strip.debug` rightly refuses to publish.
+
+**The other two were the smoke test being too optimistic about stopping and about gzip.** `httpd -k
+stop` is a Windows *service* command: in a console it answers `AH00436: No installed service named
+"Apache2.4"` while the server goes on serving, Control-Break is read as a **restart**, and Control-C is
+disabled in the only kind of process group a signal can be aimed at. What stops it is the mechanism
+httpd itself uses — the `ap<pid>_shutdown` event the parent creates and `ap_signal_parent` sets — which
+is also what a daemon supervising httpd on Windows will have to do. And `mod_deflate` does not bother
+with a 28-byte body, so the file the test asks for gzipped is 64 kB.
+
+**What the row costs a user**: 6.1 MB on Linux x86_64, 5.6 MB on macOS aarch64, 3.7 MB on Windows
+x86_64 and 3.5 MB on ARM64, after `manual/` (24.0 MB), the headers, `apxs` and the fourteen support
+programs come out. `glibc` 2.34, macOS 14.0 and 15.0, and the Visual C++ 2022 redistributable, all
+measured. **No `mod_php` on any cell**: PHP is reached through `mod_proxy_fcgi`, because the Windows PHP
+build here is non-thread-safe on purpose and `static-php-cli` builds no `apache2handler`.
+
 ---
 
 ## The tools
