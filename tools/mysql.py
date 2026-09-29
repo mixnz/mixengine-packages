@@ -526,7 +526,9 @@ def legs(spec: str) -> dict[str, list[dict[str, str]]]:
     wanted = LINES if spec.strip() == "all" else tuple(
         piece.strip() for piece in spec.split(",") if piece.strip()
     )
-    unknown = [line for line in wanted if line not in LINES]
+    # A piece may be a line (8.4) or an exact version of one (8.4.11); `resolve` answers both,
+    # because a version is a prefix of itself. The line is what decides which recipe a cell uses.
+    unknown = [piece for piece in wanted if ".".join(piece.split(".")[:2]) not in LINES]
     if unknown:
         raise SystemExit(
             f"this repository packs MySQL {', '.join(LINES)}; it was asked for "
@@ -536,10 +538,10 @@ def legs(spec: str) -> dict[str, list[dict[str, str]]]:
         raise SystemExit("nothing to build: the version list is empty")
 
     planned: dict[str, list[dict[str, str]]] = {"borrow": [], "macos": [], "linux": []}
-    for line in wanted:
-        version = resolve(line)
-        print(f"{line} resolves to {version}")
-        built = line in BUILT_LINES
+    for piece in wanted:
+        version = resolve(piece)
+        print(f"{piece} resolves to {version}")
+        built = ".".join(piece.split(".")[:2]) in BUILT_LINES
         for (system, arch), runner in RUNNERS.items():
             leg = {"version": version, "os": system, "arch": arch, "runner": runner}
             if built and system == "linux":

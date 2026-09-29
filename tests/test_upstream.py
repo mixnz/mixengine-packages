@@ -60,6 +60,17 @@ class Parsers(unittest.TestCase):
         ]
         self.assertEqual(upstream.from_mongodb(records), ["8.0.33"])
 
+    def test_rubyinstaller_versions_come_from_its_tags(self):
+        releases = [
+            {"tag_name": "RubyInstaller-4.0.7-1", "draft": False, "prerelease": False},
+            {"tag_name": "RubyInstaller-4.1.0-preview1-1", "draft": False, "prerelease": True},
+            {"tag_name": "RubyInstaller-3.4.10-2", "draft": False, "prerelease": False},
+        ]
+        self.assertEqual(sorted(upstream.from_rubyinstaller(releases)), ["3.4.10", "4.0.7"])
+
+    def test_ruby_waits_for_rubyinstaller(self):
+        self.assertEqual(upstream.ruby_both(["4.0.6", "4.0.7"], ["4.0.6"]), ["4.0.6"])
+
     def test_every_watchable_kind_is_known(self):
         for kind in ("php", "node", "python", "ruby", "go", "java", "caddy", "composer",
                      "mongosh", "memcached", "nginx", "httpd", "redis", "valkey", "mariadb",
