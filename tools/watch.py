@@ -15,7 +15,17 @@ Python 3 stdlib only.
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
+import sys
+import urllib.request
 from dataclasses import dataclass, field
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import upstream  # noqa: E402  — siblings, and this directory is not importable as a package
 
 # Packed on demand and never back-filled, by its own design.
 EXCLUDED = frozenset({"meilisearch"})
@@ -105,3 +115,81 @@ def make_plan(index: dict[str, list[str]], upstream: dict[str, list[str]], tags:
             plan.build.append((kind, version))
         plan.new_lines += [(kind, line) for line in sorted(new_lines, key=parts)]
     return plan
+
+
+REPO = os.environ.get("GH_REPO", "mixnz/mixengine-packages")
+INDEX_URL = f"https://github.com/{REPO}/releases/download/index/index.json"
+LABEL = "upstream-watch"
+
+
+class Gh:
+    """The few `gh` calls this needs, and nothing else. Tests replace it with a fake."""
+
+    def __init__(self, repo: str = REPO):
+        self.repo = repo
+
+    def _run(self, *args: str) -> str:
+        return subprocess.run(
+            ["gh", *args, "--repo", self.repo], check=True, capture_output=True, text=True
+        ).stdout
+
+    def tags(self) -> set[str]:
+        out = self._run("release", "list", "--limit", "1000", "--json", "tagName")
+        return {entry["tagName"] for entry in json.loads(out)}
+
+    def runs(self, workflow: str) -> list[dict]:
+        out = self._run("run", "list", "--workflow", workflow, "--limit", "200",
+                        "--json", "databaseId,displayTitle,status,conclusion")
+        return json.loads(out)
+
+    def dispatch(self, workflow: str, fields: dict[str, str]) -> None:
+        flags = [item for key, value in fields.items() for item in ("-f", f"{key}={value}")]
+        self._run("workflow", "run", workflow, *flags)
+
+    def view(self, run_id: int) -> dict:
+        return json.loads(self._run("run", "view", str(run_id), "--json", "status,conclusion"))
+
+    def issue(self, body: str | None) -> None:
+        """Edit the one open report in place, open it if there is none, close it when *body* is None."""
+        self._run("label", "create", LABEL, "--force", "--color", "0e8a16",
+                  "--description", "Daily report of tools/watch.py")
+        found = json.loads(self._run("issue", "list", "--label", LABEL, "--state", "open",
+                                     "--json", "number"))
+        if body is None:
+            for entry in found:
+                self._run("issue", "close", str(entry["number"]))
+            return
+        if found:
+            self._run("issue", "edit", str(found[0]["number"]), "--body", body)
+        else:
+            self._run("issue", "create", "--title", "Upstream watch", "--label", LABEL,
+                      "--body", body)
+
+
+def read_index(url: str = INDEX_URL) -> dict[str, list[str]]:
+    with urllib.request.urlopen(url, timeout=60) as response:
+        document = json.loads(response.read())
+    found: dict[str, list[str]] = {}
+    for package in document["packages"]:
+        found.setdefault(package["kind"], []).append(package["version"])
+    return found
+
+
+def gather(gh, index: dict[str, list[str]], ask=upstream.versions) -> tuple[Plan, dict[str, str]]:
+    """Ask upstream and GitHub what `make_plan` needs. A kind that cannot be asked is reported."""
+    answers: dict[str, list[str]] = {}
+    errors: dict[str, str] = {}
+    failures: dict[tuple[str, str], int] = {}
+    for kind, versions in index.items():
+        if kind in EXCLUDED or kind not in WORKFLOWS:
+            continue
+        try:
+            answers[kind] = ask(kind, {line_of(kind, version) for version in versions})
+        except (SystemExit, OSError, ValueError, KeyError) as error:
+            errors[kind] = str(error)
+            continue
+        counted = failures_by_title(gh.runs(WORKFLOWS[kind][0]))
+        for version in answers[kind]:
+            if title(kind, version) in counted:
+                failures[(kind, version)] = counted[title(kind, version)]
+    return make_plan(index, answers, gh.tags(), failures), errors

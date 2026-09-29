@@ -122,5 +122,39 @@ class Titles(unittest.TestCase):
             self.assertIn(expected, text, workflow)
 
 
+class FakeGh:
+    def __init__(self, tags=(), runs=None):
+        self._tags, self._runs = set(tags), runs or {}
+        self.dispatched = []
+
+    def tags(self):
+        return self._tags
+
+    def runs(self, workflow):
+        return self._runs.get(workflow, [])
+
+
+class Gather(unittest.TestCase):
+    def test_an_unreachable_upstream_does_not_stop_the_others(self):
+        def ask(kind, lines):
+            if kind == "php":
+                raise SystemExit("php.net answered 503")
+            return {"node": ["22.24.0"]}[kind]
+
+        plan, errors = watch.gather(
+            FakeGh(), {"php": ["8.4.24"], "node": ["22.23.2"]}, ask=ask
+        )
+        self.assertEqual(plan.build, [("node", "22.24.0")])
+        self.assertEqual(errors, {"php": "php.net answered 503"})
+
+    def test_failures_come_from_release_runs_of_that_version(self):
+        runs = {"build-mysql.yml": [
+            {"displayTitle": "build mysql 8.0.45", "conclusion": "failure"}] * 3}
+        plan, _ = watch.gather(
+            FakeGh(runs=runs), {"mysql": ["8.0.44"]}, ask=lambda kind, lines: ["8.0.45"]
+        )
+        self.assertEqual(plan.skipped, [("mysql", "8.0.45", 3)])
+
+
 if __name__ == "__main__":
     unittest.main()
