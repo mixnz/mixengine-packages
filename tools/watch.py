@@ -206,7 +206,13 @@ def _start(gh, kind: str, version: str, clock, sleep) -> int | None:
     workflow, field_name = WORKFLOWS[kind]
     wanted = title(kind, version)
     before = {run["databaseId"] for run in gh.runs(workflow)}
-    gh.dispatch(workflow, {field_name: version, "release": "true"})
+    try:
+        gh.dispatch(workflow, {field_name: version, "release": "true"})
+    except subprocess.CalledProcessError as error:
+        # One refused dispatch must not end the run before the index is published and the report
+        # written. It is reported as lost and tried again tomorrow.
+        print(f"dispatching {wanted} failed: {error.stderr or error}", file=sys.stderr)
+        return None
     waited_from = clock()
     while clock() - waited_from < APPEAR_WITHIN:
         for run in gh.runs(workflow):

@@ -279,5 +279,20 @@ class Report(unittest.TestCase):
             self.assertIn(expected, body)
 
 
+class RefusedDispatch(unittest.TestCase):
+    def test_a_refused_dispatch_is_lost_not_fatal(self):
+        import subprocess
+
+        class Refusing(ScriptedGh):
+            def dispatch(self, workflow, fields):
+                raise subprocess.CalledProcessError(1, ["gh", "workflow", "run"])
+
+        gh, clock = Refusing(), Clock()
+        results = watch.build_all(gh, [("php", "8.4.26"), ("node", "24.21.0")],
+                                  deadline=10_000, clock=clock, sleep=clock.sleep)
+        self.assertEqual(results[("php", "8.4.26")], ("lost", None))
+        self.assertEqual(results[("node", "24.21.0")], ("lost", None))
+
+
 if __name__ == "__main__":
     unittest.main()

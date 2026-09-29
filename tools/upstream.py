@@ -75,6 +75,24 @@ def from_ruby_index(text: str) -> list[str]:
     return sorted(found)
 
 
+def from_rubyinstaller(releases: list[dict]) -> list[str]:
+    found = set()
+    for release in releases:
+        if release.get("draft") or release.get("prerelease"):
+            continue
+        match = re.fullmatch(r"RubyInstaller-(\d+\.\d+\.\d+)-\d+", release.get("tag_name", ""))
+        if match:
+            found.add(match.group(1))
+    return sorted(found)
+
+
+def ruby_both(source: list[str], windows: list[str]) -> list[str]:
+    """Only what RubyInstaller has published too. Its Windows leg ends a missing version as an
+    *empty cell*, not a failure, so building before it catches up would publish a release with no
+    Windows cell — and a published tag is never rebuilt."""
+    return sorted(set(source) & set(windows))
+
+
 def from_python_sums(names: list[str], tag: str) -> list[str]:
     pattern = re.compile(rf"cpython-(\d+\.\d+\.\d+)\+{tag}-")
     return sorted({match.group(1) for name in names if (match := pattern.match(name))})
@@ -117,7 +135,7 @@ def _python(lines: set[str]) -> list[str]:
 
 def _ruby(lines: set[str]) -> list[str]:
     text = borrow.fetch(recipe("ruby_unix").INDEX, timeout=300).decode("utf-8", "replace")
-    return from_ruby_index(text)
+    return ruby_both(from_ruby_index(text), from_rubyinstaller(recipe("ruby").releases()))
 
 
 def _github(module: str):
