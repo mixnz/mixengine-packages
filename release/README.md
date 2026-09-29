@@ -139,19 +139,28 @@ assets with `--clobber`: same URL, same name, different bytes — while the sign
 index still describes the old ones. `check-archive.yml` will catch it the following Wednesday. The
 full reasoning is in [docs/the-archive.md](../docs/the-archive.md).
 
-## Nothing tells you a new version exists
+## Something tells you a new version exists
 
-The two scheduled jobs — `check-eol.yml` for a schedule that moved, `check-archive.yml` for assets
-that changed under you — both watch something *already published* going wrong. Neither watches for
-something new appearing. So every so often:
+`watch-upstream.yml` runs every morning. For every line already in the index — every kind except
+`meilisearch`, which is packed on demand — it asks upstream for every stable patch newer than the
+newest one published, dispatches `build-<kind>.yml` for each **by exact version**, at most four at a
+time, and runs `publish-index.yml` when anything new was built. You do not run `build.sh` for a new
+patch any more.
+
+What it cannot do it writes in **one issue labelled `upstream-watch`**, edited in place and closed
+when there is nothing to say:
+
+- **a build that failed** — it is retried the next day, because it is still missing;
+- **a version that failed three times** — no longer retried. Fix the recipe, then
+  `release/build.sh <kind> <version>` by hand;
+- **a new line upstream** — follow "A new line" above; the watcher never adds a line;
+- **an upstream it could not ask** — the other kinds went ahead without it.
+
+To see what it would do without doing it, dispatch it by hand with `dry` left on, or locally:
 
 ```bash
-release/build.sh caddy latest
-release/build.sh redis latest
-# …
+GH_REPO=mixnz/mixengine-packages python tools/watch.py
 ```
 
-Each recipe asks upstream what the newest release is. If it resolves to a version already published
-it will rebuild and clobber that same tag, so **do not run these blind** — compare the
-[table in the main README](../README.md) against upstream's release page first, or use
-`--no-release` to see which version it resolves to without publishing anything.
+A patch older than the newest one in the index is never built by it. Back-filling one is a
+`release/build.sh <kind> <version>` by hand, exactly as before.
