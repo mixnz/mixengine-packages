@@ -23,14 +23,29 @@ jobs:
   plan:
     # Which recipe a branch belongs to is one comparison, and it is made once here rather than in
     # four `if:` expressions that could disagree with each other.
+    #
+    # So is which version a branch *means*. Left to each leg, `8.2` was resolved five times: on
+    # 2026-09-29 static-php-cli answered 8.2.33 on two runners while php.net and the other three
+    # said 8.2.34, and those two cells were uploaded over the already-published php-8.2.33. One
+    # answer from php.net, handed to every leg, makes that impossible.
     runs-on: ubuntu-24.04
     outputs:
       legacy: ${{ steps.decide.outputs.legacy }}
+      version: ${{ steps.decide.outputs.version }}
     steps:
       - id: decide
         run: |
           set -euo pipefail
-          branch="${{ inputs.branch }}"
+          asked="${{ inputs.branch }}"
+          version=$(curl -fsS "https://www.php.net/releases/index.php?json&version=${asked}" | jq -r '.version // empty')
+          if [ -z "$version" ]; then
+            echo "::error::php.net knows no release ${asked}"; exit 1
+          fi
+          if [ "$asked" != "$version" ] && [ "${asked}" != "${version%.*}" ]; then
+            echo "::error::php.net answered ${version} for ${asked}"; exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          branch="$version"
           major="${branch%%.*}"; rest="${branch#*.}"; minor="${rest%%.*}"
           if [ "$major" -lt 7 ]; then
             echo "::error::MixEngine offers PHP from 7.0"; exit 1
@@ -46,7 +61,8 @@ jobs:
   windows:
     # Borrowed, not built: windows.php.net already publishes something relocatable, so this job
     # fetches, proves and repacks rather than compiling anything — for every branch alike, which is
-    # why it needs no `plan`.
+    # why it needs `plan` only for the one version every leg builds.
+    needs: plan
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
@@ -55,7 +71,7 @@ jobs:
       - name: borrow and repack
         # -u because a failure here is diagnosed from the log, and block-buffered stdout arrives
         # after the traceback that explains it.
-        run: python -u tools/php_windows.py --version "${{ inputs.branch }}" --out dist
+        run: python -u tools/php_windows.py --version "${{ needs.plan.outputs.version }}" --out dist
       - uses: actions/upload-artifact@v4
         with:
           name: php-windows-x86_64
@@ -86,7 +102,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - name: build
-        run: python3 -u tools/php_unix.py --branch "${{ inputs.branch }}" --out dist
+        run: python3 -u tools/php_unix.py --branch "${{ needs.plan.outputs.version }}" --out dist
         timeout-minutes: 180
         env:
           # static-php-cli asks api.github.com which release of each of its ~23 libraries is
@@ -124,7 +140,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - name: build from source
-        run: python3 -u tools/php_legacy_unix.py --branch "${{ inputs.branch }}" --out dist
+        run: python3 -u tools/php_legacy_unix.py --branch "${{ needs.plan.outputs.version }}" --out dist
         timeout-minutes: 180
       - uses: actions/upload-artifact@v4
         with:
@@ -158,7 +174,7 @@ jobs:
         run: |
           set -euo pipefail
           python="$(ls -d /opt/python/cp31*/bin/python 2>/dev/null | sort -V | tail -1 || true)"
-          "${python:-python3}" -u tools/php_legacy_unix.py --branch "${{ inputs.branch }}" --out dist
+          "${python:-python3}" -u tools/php_legacy_unix.py --branch "${{ needs.plan.outputs.version }}" --out dist
         timeout-minutes: 180
       - uses: actions/upload-artifact@v4
         with:
