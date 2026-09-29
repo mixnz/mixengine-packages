@@ -15,6 +15,7 @@ Python 3 stdlib only.
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import subprocess
@@ -243,3 +244,86 @@ def build_all(gh, jobs: list[tuple[str, str]], deadline: float, limit: int = LIM
     for job in waiting:
         results[job] = ("not dispatched", None)
     return results
+
+
+# The job is capped at six hours; stop dispatching and waiting early enough to publish and report.
+BUDGET = 5 * 3600
+
+
+def should_publish(plan: Plan, results: dict) -> bool:
+    built = any(outcome == "success" for outcome, _ in results.values())
+    return built or bool(plan.publish_only)
+
+
+def _link(run_id: int | None) -> str:
+    return f"https://github.com/{REPO}/actions/runs/{run_id}" if run_id else "—"
+
+
+def render(plan: Plan, errors: dict[str, str], results: dict, published: str | None) -> str | None:
+    """The issue body, or None when there is nothing a person needs to know."""
+    trouble = [job for job, (outcome, _) in results.items() if outcome != "success"]
+    if not (trouble or plan.skipped or plan.new_lines or errors):
+        return None
+    out = ["Written by `tools/watch.py` on its daily run; edited in place, closed when empty.", ""]
+    if results:
+        out += ["## Built today", "", "| Version | Outcome | Run |", "| --- | --- | --- |"]
+        out += [f"| {kind} {version} | {outcome} | {_link(run_id)} |"
+                for (kind, version), (outcome, run_id) in results.items()]
+        out += ["", f"Index publish: **{published or 'not run'}**", ""]
+    if plan.skipped:
+        out += ["## Needs a person — no longer retried", ""]
+        out += [f"- {kind} {version}: {count} failed release runs"
+                for kind, version, count in plan.skipped]
+        out += ["", "Fix the recipe, then `release/build.sh <kind> <version>` by hand.", ""]
+    if plan.new_lines:
+        out += ["## New lines upstream — follow \"A new line\" in release/README.md", ""]
+        out += [f"- {kind} {line}" for kind, line in plan.new_lines]
+        out += [""]
+    if errors:
+        out += ["## Could not ask upstream", ""]
+        out += [f"- {kind}: {error}" for kind, error in sorted(errors.items())]
+        out += [""]
+    return "\n".join(out)
+
+
+def _publish(gh, clock, sleep) -> str:
+    before = {run["databaseId"] for run in gh.runs("publish-index.yml")}
+    gh.dispatch("publish-index.yml", {"publish": "true"})
+    for _ in range(24):
+        sleep(5)
+        fresh = [run for run in gh.runs("publish-index.yml") if run["databaseId"] not in before]
+        if fresh:
+            break
+    else:
+        return "lost"
+    run_id = fresh[0]["databaseId"]
+    while (state := gh.view(run_id))["status"] != "completed":
+        sleep(30)
+    return state["conclusion"] or "failure"
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--execute", action="store_true",
+                        help="dispatch builds, publish the index and write the issue; "
+                             "without it the plan is printed and nothing is touched")
+    args = parser.parse_args(argv)
+
+    gh = Gh()
+    started = time.monotonic()
+    plan, errors = gather(gh, read_index())
+    print(json.dumps({**plan.__dict__, "errors": errors}, indent=2))
+    if not args.execute:
+        return 0
+
+    results = build_all(gh, plan.build, deadline=started + BUDGET)
+    published = None
+    if should_publish(plan, results):
+        published = _publish(gh, time.monotonic, time.sleep)
+    gh.issue(render(plan, errors, results, published))
+    failed = published not in (None, "success")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

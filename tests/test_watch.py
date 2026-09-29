@@ -255,5 +255,29 @@ class BuildAll(unittest.TestCase):
         self.assertNotEqual(results[("php", "8.4.26")][1], 7)
 
 
+class Report(unittest.TestCase):
+    def test_publish_when_anything_new_exists(self):
+        empty = watch.Plan()
+        self.assertFalse(watch.should_publish(empty, {}))
+        self.assertTrue(watch.should_publish(empty, {("php", "8.4.26"): ("success", 1)}))
+        self.assertFalse(watch.should_publish(empty, {("php", "8.4.26"): ("failure", 1)}))
+        self.assertTrue(watch.should_publish(watch.Plan(publish_only=[("php", "8.4.25")]), {}))
+
+    def test_nothing_to_say_closes_the_issue(self):
+        self.assertIsNone(watch.render(watch.Plan(), {}, {}, None))
+
+    def test_report_names_everything_a_person_must_act_on(self):
+        plan = watch.Plan(
+            build=[("php", "8.4.26"), ("mysql", "8.0.46")],
+            skipped=[("mysql", "8.0.45", 3)],
+            new_lines=[("php", "8.6")],
+        )
+        results = {("php", "8.4.26"): ("success", 11), ("mysql", "8.0.46"): ("failure", 12)}
+        body = watch.render(plan, {"ruby": "timed out"}, results, "success")
+        for expected in ("php 8.4.26", "success", "mysql 8.0.46", "actions/runs/12",
+                         "mysql 8.0.45", "3 failed", "php 8.6", "ruby", "timed out"):
+            self.assertIn(expected, body)
+
+
 if __name__ == "__main__":
     unittest.main()
