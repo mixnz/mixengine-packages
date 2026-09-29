@@ -1,4 +1,5 @@
 name: build meilisearch
+run-name: build meilisearch ${{ inputs.version }}${{ !inputs.release && ' (no release)' || '' }}
 
 # Asked for, never automatic — the same rule every other workflow here keeps, and it matters most
 # here: Meilisearch ships a minor about every two weeks, and every release packed stays in the

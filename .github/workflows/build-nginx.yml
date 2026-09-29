@@ -1,4 +1,5 @@
 name: build nginx
+run-name: build nginx ${{ inputs.version }}${{ !inputs.release && ' (no release)' || '' }}
 
 # Asked for, never automatic — the same rule every other workflow here keeps.
 #

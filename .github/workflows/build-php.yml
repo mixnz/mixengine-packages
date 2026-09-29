@@ -1,4 +1,5 @@
 name: build php
+run-name: build php ${{ inputs.branch }}${{ !inputs.release && ' (no release)' || '' }}
 
 # Asked for, never automatic. Building PHP for five targets costs real runner minutes and upstream
 # releases on its own schedule, so a human decides when a version is wanted.
