@@ -156,5 +156,104 @@ class Gather(unittest.TestCase):
         self.assertEqual(plan.skipped, [("mysql", "8.0.45", 3)])
 
 
+class ScriptedGh:
+    """A GitHub whose runs finish after a fixed number of polls."""
+
+    def __init__(self, outcome=None, polls=1, appear=True):
+        self.outcome = outcome or {}
+        self.polls, self.appear = polls, appear
+        self._runs, self._seen, self.dispatched = {}, {}, []
+        self.in_flight_max, self._next = 0, 100
+
+    def runs(self, workflow):
+        return [dict(run) for run in self._runs.get(workflow, [])]
+
+    def dispatch(self, workflow, fields):
+        self.dispatched.append((workflow, dict(fields)))
+        if not self.appear:
+            return
+        version = next(v for k, v in fields.items() if k != "release")
+        kind = workflow[len("build-"):-len(".yml")]
+        self._next += 1
+        self._runs.setdefault(workflow, []).insert(0, {
+            "databaseId": self._next, "displayTitle": watch.title(kind, version),
+            "status": "in_progress", "conclusion": "",
+        })
+        self._seen[self._next] = (kind, version, 0)
+        running = sum(1 for (_, _, n) in self._seen.values() if n >= 0)
+        self.in_flight_max = max(self.in_flight_max, running)
+
+    def view(self, run_id):
+        kind, version, n = self._seen[run_id]
+        if n + 1 >= self.polls:
+            self._seen[run_id] = (kind, version, -1)
+            return {"status": "completed",
+                    "conclusion": self.outcome.get((kind, version), "success")}
+        self._seen[run_id] = (kind, version, n + 1)
+        return {"status": "in_progress", "conclusion": ""}
+
+
+class Clock:
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+
+class BuildAll(unittest.TestCase):
+    def test_dispatches_exact_versions_with_release_on(self):
+        gh, clock = ScriptedGh(), Clock()
+        watch.build_all(gh, [("php", "8.4.26")], deadline=10_000, clock=clock, sleep=clock.sleep)
+        self.assertEqual(gh.dispatched, [("build-php.yml", {"branch": "8.4.26", "release": "true"})])
+
+    def test_list_kinds_get_a_list_of_one(self):
+        gh, clock = ScriptedGh(), Clock()
+        watch.build_all(gh, [("mariadb", "11.8.9")], deadline=10_000, clock=clock, sleep=clock.sleep)
+        self.assertEqual(gh.dispatched[0][1], {"versions": "11.8.9", "release": "true"})
+
+    def test_never_more_than_the_limit_in_flight(self):
+        gh, clock = ScriptedGh(polls=3), Clock()
+        jobs = [("node", f"22.24.{n}") for n in range(9)]
+        results = watch.build_all(gh, jobs, deadline=10_000, limit=4,
+                                  clock=clock, sleep=clock.sleep)
+        self.assertLessEqual(gh.in_flight_max, 4)
+        self.assertEqual({outcome for outcome, _ in results.values()}, {"success"})
+
+    def test_reports_each_outcome(self):
+        gh, clock = ScriptedGh(outcome={("php", "8.4.25"): "failure"}), Clock()
+        results = watch.build_all(gh, [("php", "8.4.25"), ("php", "8.4.26")],
+                                  deadline=10_000, clock=clock, sleep=clock.sleep)
+        self.assertEqual(results[("php", "8.4.25")][0], "failure")
+        self.assertEqual(results[("php", "8.4.26")][0], "success")
+
+    def test_deadline_leaves_runs_running_and_the_rest_undispatched(self):
+        gh, clock = ScriptedGh(polls=1_000), Clock()
+        jobs = [("node", f"22.24.{n}") for n in range(6)]
+        results = watch.build_all(gh, jobs, deadline=300, limit=4, poll=60,
+                                  clock=clock, sleep=clock.sleep)
+        outcomes = [outcome for outcome, _ in results.values()]
+        self.assertEqual(outcomes.count("running"), 4)
+        self.assertEqual(outcomes.count("not dispatched"), 2)
+
+    def test_a_run_that_never_appears_is_lost(self):
+        gh, clock = ScriptedGh(appear=False), Clock()
+        results = watch.build_all(gh, [("php", "8.4.26")], deadline=10_000,
+                                  clock=clock, sleep=clock.sleep)
+        self.assertEqual(results[("php", "8.4.26")], ("lost", None))
+
+    def test_an_older_run_with_the_same_title_is_not_mistaken_for_the_new_one(self):
+        gh, clock = ScriptedGh(), Clock()
+        gh._runs["build-php.yml"] = [{"databaseId": 7, "displayTitle": "build php 8.4.26",
+                                       "status": "completed", "conclusion": "failure"}]
+        results = watch.build_all(gh, [("php", "8.4.26")], deadline=10_000,
+                                  clock=clock, sleep=clock.sleep)
+        self.assertEqual(results[("php", "8.4.26")][0], "success")
+        self.assertNotEqual(results[("php", "8.4.26")][1], 7)
+
+
 if __name__ == "__main__":
     unittest.main()
