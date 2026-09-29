@@ -19,6 +19,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -193,3 +194,52 @@ def gather(gh, index: dict[str, list[str]], ask=upstream.versions) -> tuple[Plan
             if title(kind, version) in counted:
                 failures[(kind, version)] = counted[title(kind, version)]
     return make_plan(index, answers, gh.tags(), failures), errors
+
+
+LIMIT = 4
+APPEAR_WITHIN = 120  # seconds GitHub may take to list a dispatched run
+
+
+def _start(gh, kind: str, version: str, clock, sleep) -> int | None:
+    """Dispatch one exact version and return its run id, found by title among ids not seen before."""
+    workflow, field_name = WORKFLOWS[kind]
+    wanted = title(kind, version)
+    before = {run["databaseId"] for run in gh.runs(workflow)}
+    gh.dispatch(workflow, {field_name: version, "release": "true"})
+    waited_from = clock()
+    while clock() - waited_from < APPEAR_WITHIN:
+        for run in gh.runs(workflow):
+            if run["displayTitle"] == wanted and run["databaseId"] not in before:
+                return run["databaseId"]
+        sleep(5)
+    return None
+
+
+def build_all(gh, jobs: list[tuple[str, str]], deadline: float, limit: int = LIMIT,
+              poll: float = 60, clock=time.monotonic, sleep=time.sleep):
+    """Build every job, at most *limit* at once, until done or *deadline* (on *clock*)."""
+    results: dict[tuple[str, str], tuple[str, int | None]] = {}
+    waiting = list(jobs)
+    flying: dict[tuple[str, str], int] = {}
+    while waiting or flying:
+        while waiting and len(flying) < limit and clock() < deadline:
+            job = waiting.pop(0)
+            run_id = _start(gh, *job, clock=clock, sleep=sleep)
+            if run_id is None:
+                results[job] = ("lost", None)
+            else:
+                flying[job] = run_id
+        for job, run_id in list(flying.items()):
+            state = gh.view(run_id)
+            if state["status"] == "completed":
+                results[job] = (state["conclusion"] or "failure", run_id)
+                del flying[job]
+        if clock() >= deadline:
+            break
+        if flying:
+            sleep(poll)
+    for job, run_id in flying.items():
+        results[job] = ("running", run_id)
+    for job in waiting:
+        results[job] = ("not dispatched", None)
+    return results
