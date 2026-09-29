@@ -1,0 +1,45 @@
+name: watch upstream
+
+# The job release/README.md used to say nobody does: notice a new patch of a line already packaged,
+# build it by exact version, and publish the index. tools/watch.py has the reasoning; the design is
+# docs/superpowers/specs/2026-09-30-upstream-watch-design.md.
+on:
+  schedule:
+    # Daily. A missed day costs a version nobody can pin, a quiet day costs one small job.
+    - cron: '41 3 * * *'
+  workflow_dispatch:
+    inputs:
+      dry:
+        description: 'Only print the plan. Off dispatches builds, publishes and writes the issue.'
+        required: false
+        default: true
+        type: boolean
+
+# GITHUB_TOKEN may dispatch workflows, so no personal token is involved.
+permissions:
+  actions: write
+  contents: read
+  issues: write
+
+# Two watchers would dispatch the same versions twice.
+concurrency:
+  group: watch-upstream
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: unit tests
+        run: python -m unittest discover -s tests -v
+      - name: watch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # The GitHub-release catalogues (caddy, composer, mongosh, memcached) read this one.
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: python -u tools/watch.py ${{ (github.event_name == 'schedule' || !inputs.dry) && '--execute' || '' }}
