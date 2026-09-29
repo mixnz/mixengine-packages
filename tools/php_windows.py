@@ -43,6 +43,7 @@ import tempfile
 import urllib.error
 import urllib.request
 import zipfile
+from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -54,6 +55,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 # invisibly, precisely because they agree on the name of the thing.
 import borrow  # noqa: E402  — siblings, and this directory is not importable as a package
 import eol  # noqa: E402
+import pe  # noqa: E402
 import php_parity  # noqa: E402
 import php_smoke  # noqa: E402
 import relocate  # noqa: E402
@@ -212,8 +214,9 @@ def rename_aliases(tree: Path) -> tuple[list[str], list[str]]:
     return added, removed
 
 
-def pecl_release(package: str, branch: str, compiler: str, zip_arch: str) -> tuple[str, str] | None:
-    """The newest stable *package* that publishes a build for exactly this PHP, or ``None``.
+def pecl_releases(package: str, branch: str, compiler: str,
+                  zip_arch: str) -> Iterator[tuple[str, str]]:
+    """Every stable *package* that publishes a build for exactly this PHP branch, newest first.
 
     "Exactly" includes the compiler tag, which is the one part of this that is not a preference. A
     ``vs16`` extension loaded into a ``vc15`` PHP is a second C runtime in one process rather than a
@@ -248,7 +251,26 @@ def pecl_release(package: str, branch: str, compiler: str, zip_arch: str) -> tup
         except urllib.error.HTTPError:
             continue
         if asset in files:
-            return candidate, f"{PECL}/{package}/{candidate}/{asset}"
+            yield candidate, f"{PECL}/{package}/{candidate}/{asset}"
+
+
+def first_loadable(candidates: Iterable[tuple[str, str]], dll_of: Callable[[str, str], bytes],
+                   tree: Path) -> tuple[str, str, bytes] | None:
+    """The newest candidate whose DLL imports nothing *tree*'s own DLLs fail to export.
+
+    A branch-and-compiler match is not enough. PECL builds an extension per branch against the
+    newest patch of the day, so it can import a function that patch added — `php_mongodb` 2.5.3
+    needs `php_win32_ioutil_path_kind_w`, which 8.4 exports only from 8.4.26 — and every older
+    patch then refuses to load it. The previous release, built before that function existed, is the
+    right one for those patches. See `tools/pe.py`.
+    """
+    for release, url in candidates:
+        binary = dll_of(release, url)
+        missing = pe.unresolved(binary, tree)
+        if not missing:
+            return release, url, binary
+        said = "; ".join(f"{', '.join(symbols)} from {dll}" for dll, symbols in missing.items())
+        print(f"passing over {url}: it imports {said}, which this PHP does not export")
     return None
 
 
@@ -272,11 +294,21 @@ def install_extensions(tree: Path, branch: str, compiler: str, zip_arch: str,
             print(f"{package}: already in the publisher's archive")
             continue
 
-        found = pecl_release(package, branch, compiler, zip_arch)
+        def dll_of(release: str, url: str, package: str = package) -> bytes:
+            print(f"borrowing {url}")
+            archive = work / f"{package}-{release}.zip"
+            urllib.request.urlretrieve(url, archive)
+            with zipfile.ZipFile(archive) as zipped:
+                for member in zipped.infolist():
+                    if member.filename.rsplit("/", 1)[-1] == f"php_{package}.dll":
+                        return zipped.read(member)
+            raise SystemExit(f"{url} carries no php_{package}.dll")
+
+        found = first_loadable(pecl_releases(package, branch, compiler, zip_arch), dll_of, tree)
         if found is None:
             missing = (
-                f"PECL publishes no {compiler} nts {zip_arch} build of {package} for PHP {branch}, "
-                f"within {PECL_DEPTH} releases"
+                f"PECL publishes no {compiler} nts {zip_arch} build of {package} for PHP {branch} "
+                f"that this patch can load, within {PECL_DEPTH} releases"
             )
             if package in php_parity.REQUIRED:
                 raise SystemExit(
@@ -287,10 +319,8 @@ def install_extensions(tree: Path, branch: str, compiler: str, zip_arch: str,
                   file=sys.stderr)
             continue
 
-        release, url = found
-        print(f"borrowing {url}")
-        archive = work / f"{package}.zip"
-        urllib.request.urlretrieve(url, archive)
+        release, url, _ = found
+        archive = work / f"{package}-{release}.zip"
         with zipfile.ZipFile(archive) as zipped:
             for member in zipped.infolist():
                 if member.is_dir():
