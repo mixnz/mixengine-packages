@@ -1,4 +1,5 @@
 name: build mariadb
+run-name: build mariadb ${{ inputs.versions }}${{ !inputs.release && ' (no release)' || '' }}
 
 # Asked for, never automatic — the same rule every other workflow here keeps.
 #

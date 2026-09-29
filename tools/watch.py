@@ -24,6 +24,20 @@ EXCLUDED = frozenset({"meilisearch"})
 # column of each kind's table in README.md.
 LINE_DEPTH = {"node": 1, "java": 1, "postgres": 1}
 
+# kind -> (workflow, the input its version goes in). The three list kinds are given a list of one,
+# so one run always names exactly one version.
+WORKFLOWS = {
+    "php": ("build-php.yml", "branch"),
+    "mariadb": ("build-mariadb.yml", "versions"),
+    "mysql": ("build-mysql.yml", "versions"),
+    "postgres": ("build-postgres.yml", "versions"),
+    **{
+        kind: (f"build-{kind}.yml", "version")
+        for kind in ("node", "python", "ruby", "go", "java", "caddy", "composer", "mongosh",
+                     "memcached", "nginx", "httpd", "redis", "valkey", "mongodb")
+    },
+}
+
 
 def parts(version: str) -> tuple[int, ...]:
     return tuple(int(piece) for piece in version.split("."))
@@ -31,6 +45,23 @@ def parts(version: str) -> tuple[int, ...]:
 
 def line_of(kind: str, version: str) -> str:
     return ".".join(version.split(".")[: LINE_DEPTH.get(kind, 2)])
+
+
+NO_RELEASE = " (no release)"
+
+
+def title(kind: str, version: str) -> str:
+    """The run name a release build of *version* gets — see `run-name` in each build workflow."""
+    return f"build {kind} {version}"
+
+
+def failures_by_title(runs: list[dict]) -> dict[str, int]:
+    """Failed release runs per title. A person's `(no release)` look at a version never counts."""
+    counted: dict[str, int] = {}
+    for run in runs:
+        if run.get("conclusion") == "failure" and not run["displayTitle"].endswith(NO_RELEASE):
+            counted[run["displayTitle"]] = counted.get(run["displayTitle"], 0) + 1
+    return counted
 
 
 @dataclass

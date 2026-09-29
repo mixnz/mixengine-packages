@@ -1,4 +1,5 @@
 name: build mongodb
+run-name: build mongodb ${{ inputs.version }}${{ !inputs.release && ' (no release)' || '' }}
 
 # Asked for, never automatic — the same rule every other workflow here keeps, for the same reason:
 # upstream releases on its own schedule and a human decides which version is wanted.

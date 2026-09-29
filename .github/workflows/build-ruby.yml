@@ -1,4 +1,5 @@
 name: build ruby
+run-name: build ruby ${{ inputs.version }}${{ !inputs.release && ' (no release)' || '' }}
 
 # **Six legs and two recipes**, which is the shape the Ruby row of MixEngine's runtime table actually
 # has. RubyInstaller publishes relocatable archives for Windows on both architectures, so those two

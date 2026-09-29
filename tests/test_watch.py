@@ -92,5 +92,35 @@ class MakePlan(unittest.TestCase):
             self.assertIn(version, upstream[kind])
 
 
+class Titles(unittest.TestCase):
+    def test_title_matches_the_workflow_run_name(self):
+        self.assertEqual(watch.title("php", "8.4.26"), "build php 8.4.26")
+
+    def test_every_watched_kind_has_a_workflow(self):
+        import upstream
+        for kind in upstream.KINDS:
+            self.assertIn(kind, watch.WORKFLOWS)
+
+    def test_failures_count_release_runs_only(self):
+        runs = [
+            {"displayTitle": "build mysql 8.0.45", "conclusion": "failure"},
+            {"displayTitle": "build mysql 8.0.45", "conclusion": "failure"},
+            {"displayTitle": "build mysql 8.0.45 (no release)", "conclusion": "failure"},
+            {"displayTitle": "build mysql 8.0.45", "conclusion": "cancelled"},
+            {"displayTitle": "build mysql 8.4.10", "conclusion": "success"},
+        ]
+        self.assertEqual(watch.failures_by_title(runs), {"build mysql 8.0.45": 2})
+
+    def test_every_build_workflow_has_the_run_name(self):
+        root = Path(__file__).resolve().parent.parent / ".github" / "workflows"
+        for kind, (workflow, field_name) in watch.WORKFLOWS.items():
+            text = (root / workflow).read_text(encoding="utf-8")
+            expected = (
+                f"run-name: build {kind} ${{{{ inputs.{field_name} }}}}"
+                "${{ !inputs.release && ' (no release)' || '' }}"
+            )
+            self.assertIn(expected, text, workflow)
+
+
 if __name__ == "__main__":
     unittest.main()
