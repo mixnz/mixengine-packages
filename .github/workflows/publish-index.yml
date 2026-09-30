@@ -26,6 +26,7 @@ env:
   INDEX_TAG: index
   BASE_URL: https://github.com/${{ github.repository }}/releases/download
   PUBLISHED: https://github.com/${{ github.repository }}/releases/download/index/index.json
+  PUBLISHED_ROOT: https://github.com/${{ github.repository }}/releases/download/index/index-v2.json
 
 jobs:
   index:
@@ -62,10 +63,15 @@ jobs:
             --base-url "$BASE_URL" \
             --out dist/index.json
 
+      # One command, and no retry without `--previous`: a document that is not published yet is
+      # told apart from one that could not be read inside verify.py, so a lost version can no
+      # longer pass by failing first.
       - name: verify before signing
         run: |
-          python tools/verify.py dist/index.json --previous "$PUBLISHED" || \
-          python tools/verify.py dist/index.json
+          python tools/verify.py dist/index.json \
+            --previous "$PUBLISHED" \
+            --catalogue dist \
+            --previous-root "$PUBLISHED_ROOT"
 
       - name: sign
         if: inputs.publish
@@ -81,11 +87,15 @@ jobs:
           fi
           sudo apt-get update -qq && sudo apt-get install -y -qq minisign
           printf '%s' "$MINISIGN_SECRET_KEY" > minisign.key
-          printf '%s\n' "$MINISIGN_PASSWORD" | minisign -S -m dist/index.json -s minisign.key
+          for document in dist/index.json dist/index-v2.json; do
+            printf '%s\n' "$MINISIGN_PASSWORD" | minisign -S -m "$document" -s minisign.key
+          done
           shred -u minisign.key
-          # Prove the signature against the key in the tree, which is the same key compiled into
+          # Prove the signatures against the key in the tree, which is the same key compiled into
           # MixEngine. Signing with a key nobody can check is worth nothing.
-          minisign -V -m dist/index.json -p minisign.pub
+          for document in dist/index.json dist/index-v2.json; do
+            minisign -V -m "$document" -p minisign.pub
+          done
 
       - name: publish
         if: inputs.publish
@@ -97,8 +107,20 @@ jobs:
             gh release create "$INDEX_TAG" --title "Package index" \
               --notes "The signed index MixEngine reads. Always the newest one; the tag is moved rather than added to, so the URL never changes."
           gh release upload "$INDEX_TAG" dist/index.json dist/index.json.minisig --clobber
+          # Schema 2, in the one order that never shows a client a wrong answer: the kind files
+          # that changed, then the root, then its signature last. A client asks for the signature
+          # first, so until that last upload it sees nothing new; GitHub cannot replace several
+          # assets at once, and what a client can meet in between is a refusal it retries.
+          python tools/catalogue.py --changed dist --against "$PUBLISHED_ROOT" > changed.txt
+          while read -r name; do
+            if [ -n "$name" ]; then
+              gh release upload "$INDEX_TAG" "dist/$name" --clobber
+            fi
+          done < changed.txt
+          gh release upload "$INDEX_TAG" dist/index-v2.json --clobber
+          gh release upload "$INDEX_TAG" dist/index-v2.json.minisig --clobber
 
       - uses: actions/upload-artifact@v4
         with:
           name: index
-          path: dist/index.json*
+          path: dist/index*.json*

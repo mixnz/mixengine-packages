@@ -63,6 +63,24 @@ jobs:
             --index index.json \
             --slices "${{ inputs.slices || '8' }}" | tee archive.log
 
+      # The schema 2 set is nineteen assets that cannot be replaced together. An upload that
+      # stopped halfway leaves a root naming bytes that are not there, and nothing else would
+      # notice: every client refuses it quietly and goes on with what it had.
+      - name: check the schema 2 set is whole and says what index.json says
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=https://github.com/${{ github.repository }}/releases/download/index
+          mkdir -p v2
+          curl -fsSL -o v2/index-v2.json "$base/index-v2.json"
+          curl -fsSL -o v2/index-v2.json.minisig "$base/index-v2.json.minisig"
+          minisign -V -m v2/index-v2.json -p minisign.pub
+          for kind in $(python -c "import json; print(' '.join(json.load(open('v2/index-v2.json'))['kinds']))"); do
+            curl -fsSL -o "v2/index-v2-$kind.json" "$base/index-v2-$kind.json"
+          done
+          pip install -q jsonschema
+          python tools/verify.py index.json --catalogue v2
+
       - name: say what to do about it
         if: failure() && steps.account.outcome == 'failure'
         run: |

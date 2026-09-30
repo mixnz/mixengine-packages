@@ -26,7 +26,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import eol  # noqa: E402  — siblings, and this directory is not importable as a package
+import catalogue  # noqa: E402  — siblings, and this directory is not importable as a package
+import eol  # noqa: E402
 
 SCHEMA = 1
 ARCHIVE_SUFFIXES = (".zip", ".tar.zst", ".tar.gz")
@@ -196,6 +197,21 @@ def serialise(index: dict) -> bytes:
     return (json.dumps(index, separators=(",", ":")) + "\n").encode("utf-8")
 
 
+def write(index: dict, out: Path, base_url: str) -> list[Path]:
+    """Write the index in both encodings: *out*, and the schema 2 set beside it.
+
+    One model, written twice. `verify.py` decodes the second and holds it to the first, so the two
+    cannot come to describe different things without the run failing before it signs.
+    """
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(serialise(index))
+    written = [out]
+    for name, raw in catalogue.encode(index, base_url).items():
+        (out.parent / name).write_bytes(raw)
+        written.append(out.parent / name)
+    return written
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--artifacts", type=Path, default=Path("dist"),
@@ -221,14 +237,14 @@ def main() -> None:
     moved = rebase(previous, args.base_url)
     index = merge(previous, found, dates, args.channel)
 
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_bytes(serialise(index))
+    written = write(index, args.out, args.base_url)
 
     artifacts = sum(len(p["artifacts"]) for p in index["packages"])
     print(f"added {len(found)} artifact(s)")
     if moved:
         print(f"re-pointed {moved} carried-over artifact(s) at {args.base_url}")
-    print(f"wrote {args.out}: {len(index['packages'])} package(s), {artifacts} artifact(s)")
+    print(f"wrote {args.out}: {len(index['packages'])} package(s), {artifacts} artifact(s), "
+          f"and {len(written) - 2} kind file(s) beside it")
 
 
 if __name__ == "__main__":

@@ -55,7 +55,8 @@ if [[ "$publish" == true ]]; then
   cat <<EOF
 Done. The signed index is at:
 
-    https://github.com/$repo/releases/download/index/index.json
+    https://github.com/$repo/releases/download/index/index.json       (schema 1)
+    https://github.com/$repo/releases/download/index/index-v2.json    (schema 2, one file per kind beside it)
 
 If you just added a whole new LINE rather than a new patch of an existing one, two
 things are still outstanding — see "A new line" in release/README.md.

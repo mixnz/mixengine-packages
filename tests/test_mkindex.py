@@ -47,5 +47,23 @@ class Found(unittest.TestCase):
         self.assertEqual(mkindex.read_found(None), [])
 
 
+class Write(unittest.TestCase):
+    def test_both_encodings_are_written_side_by_side(self):
+        base = "https://github.com/mixnz/mixengine-packages/releases/download"
+        index = json.loads(json.dumps(INDEX))
+        index["packages"][0]["artifacts"][0]["url"] = (
+            f"{base}/caddy-2.11.4/caddy-2.11.4-linux-x86_64.tar.zst")
+        out = Path(tempfile.mkdtemp()) / "dist" / "index.json"
+
+        written = mkindex.write(index, out, base)
+
+        self.assertEqual(sorted(path.name for path in written),
+                         ["index-v2-caddy.json", "index-v2.json", "index.json"])
+        self.assertEqual(json.loads(out.read_bytes()), index)
+        root = json.loads((out.parent / "index-v2.json").read_bytes())
+        self.assertEqual(root["generated_at"], index["generated_at"])
+        self.assertEqual(list(root["kinds"]), ["caddy"])
+
+
 if __name__ == "__main__":
     unittest.main()
