@@ -279,9 +279,8 @@ def describe(
     *removed* is what :func:`prune` threw out, named by root entry rather than by file: a reader
     holding this artifact and the publisher's own archive should be able to account for every
     difference between the two, and ``include`` says that in one line where its 2,726 headers would
-    say it in 2,726. *added* stays an argument and stays empty — nothing is written into a Node
-    tree today, and a recipe that starts to should have somewhere to declare it that already
-    exists. See :func:`borrow.declare` for what the two fields promise and what is checked before
+    say it in 2,726. *added* is what :func:`bundle_foreign` put in — empty through Node 24, and
+    ``lib/libatomic.so.1`` on the Linux cells of 26. See :func:`borrow.declare` for what the two fields promise and what is checked before
     they are written.
     """
     operating_system, arch = target
@@ -311,6 +310,34 @@ def describe(
         "provides": provides,
     }
     return borrow.declare(tree, manifest, added, removed, changed=changed)
+
+
+def bundle_foreign(tree: Path, changed: dict[str, str]) -> list[str]:
+    """Put inside the tree any library ``bin/node`` loads that a machine cannot be assumed to have.
+
+    Node 26 is the first line whose Linux binary needs ``libatomic.so.1``. That is the compiler's
+    runtime like ``libgcc_s``, but unlike it is its own package (``libatomic1``) that minimal
+    systems do not install, so `relocate` does not count it as the system's and the relocated tree
+    reached outside itself. It is bundled the way MariaDB's already is, with its licence.
+
+    **Nothing is touched when nothing is needed.** `relocate.bundle` rewrites the RUNPATH of every
+    binary it walks even when it copied nothing, and a Node 24 whose bytes changed for no reason
+    would be a difference `upstream.changed` could not explain. Answers the paths it added.
+    """
+    binary = tree / "bin" / "node"
+    foreign = [
+        spelling for spelling, resolved in relocate.dependencies(binary, tree / "bin")
+        if not relocate.is_system(spelling, resolved)
+        and not (resolved is not None and relocate.inside(resolved, tree))
+    ]
+    if not foreign:
+        return []
+    bundled = relocate.bundle(tree)
+    print(f"bundled {', '.join(sorted(bundled))}, which bin/node needs and a machine may not have")
+    relocate.bundled_licences(tree, bundled)
+    said = "RUNPATH set to $ORIGIN/../lib, so it loads the bundled " + ", ".join(sorted(bundled))
+    changed["bin/node"] = f"{changed['bin/node']}; {said}" if "bin/node" in changed else said
+    return [f"lib/{name}" for name in sorted(bundled)]
 
 
 def smoke(tree: Path, version: str, manifest: dict) -> dict:
@@ -445,8 +472,11 @@ def main() -> None:
     # path in bytes that are no longer upstream's, which is the one difference a reader
     # comparing the two archives would otherwise read as a corrupted download.
     changed = strip.debug(tree)
+    # After stripping, never before: `strip` rewrites the segments `patchelf` has just laid out,
+    # which is the order `httpd.py` learned the hard way.
+    added = bundle_foreign(tree, changed) if target[0] == "linux" else []
 
-    manifest = describe(tree, version, target, url, actual, removed=removed,
+    manifest = describe(tree, version, target, url, actual, added=added, removed=removed,
                         changed=changed)
     manifest["smoke"] = smoke(tree, version, manifest)
 
