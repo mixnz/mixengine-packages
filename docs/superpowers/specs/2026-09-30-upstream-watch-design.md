@@ -27,11 +27,12 @@ blueprint pinning one of those versions cannot be satisfied, and nothing in the 
 **In scope:** a new *patch* of a *line that already exists in the index*, for every kind whose
 recipe can build an exact version on request.
 
-**Out of scope, reported only:**
+**Out of scope, reported rather than published:**
 
 - **A new line** (PHP 8.6, Node 26, PostgreSQL 19). It needs a README row, `eol.py --update`, and
   possibly a written reason for an empty cell — the steps in "A new line" of `release/README.md`.
-  The watcher lists it in the report; a person does the rest.
+  The watcher lists it in the report and builds its newest version once without a release (step 4
+  below); a person does the rest.
 - **`meilisearch`.** Packed on demand, never back-filled, by its own design.
 - **Versions older than what a line had when the watch began.** That is back-fill, and was decided against.
 
@@ -123,6 +124,10 @@ The watcher finds its run by that name. This also makes the Actions list readabl
 - **Retry is the next day's run**, with no state kept: a version that failed is still missing. To stop
   a version that will never build from burning minutes daily, the watcher skips a version whose
   build run (found by `run-name`) has **failed 3 times**, and lists it under "needs a person".
+- A failure only upstream can fix would hold the issue open for good, so a person can set the version
+  aside in `data/watch-ignore.json` with a reason and an `until` date. Until then it is neither
+  built nor reported; after it, it is built again and only failures from that day on count, in case
+  upstream fixed it. MySQL 8.0.45, published with unsigned Linux tarballs, is the first.
 - The report goes to **one** GitHub issue labelled `upstream-watch`, edited in place rather than a
   new issue per day: what was built, what failed with its run link, what is skipped, and which new
   lines exist. The issue is closed automatically by a run with nothing to say.

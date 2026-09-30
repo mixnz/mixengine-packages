@@ -14,7 +14,8 @@ point at an upstream URL.
 
 ```
 schema/       the index and artifact formats, as JSON Schema, versioned
-data/         upstream end-of-life dates, so the index can carry them
+data/         upstream end-of-life dates, so the index can carry them; the extension roster; and
+              watch-ignore.json, the versions the daily watcher has been told to leave alone for now
 tools/        the recipes themselves, plus index generation and verification — Python 3, stdlib
               only for anything that runs on a build machine; `verify.py` alone pulls in
               `jsonschema`
@@ -338,7 +339,11 @@ and PHP is reached through `mod_proxy_fcgi` rather than a `mod_php` no PHP row h
 - **[A new patch arrives by itself](release/README.md#something-tells-you-a-new-version-exists)** —
   `watch-upstream.yml` asks upstream every morning, builds every patch of a packaged line published
   since the watch began by exact version, publishes the index, and says in one `upstream-watch`
-  issue what it could not do. A new *line* is still a person's decision.
+  issue what it could not do. A new *line* is still a person's decision, but the watcher builds
+  its newest version once **without a release** and says under it which legs built, so the
+  decision starts from what the recipes can already do. A version that fails for a reason only
+  upstream can fix is set aside in `data/watch-ignore.json` — with the reason and an `until`
+  date, after which it is tried again — so the issue can close without the version being forgotten.
 - **[Dates are the one claim here that is not about bytes](docs/end-of-life-dates.md)** — why
   `data/eol.json` is transcribed from six publishers and checked on a clock.
 - **[Nothing that has been published may be deleted](docs/the-archive.md)** — what the permanence

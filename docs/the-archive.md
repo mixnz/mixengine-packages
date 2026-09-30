@@ -60,7 +60,9 @@ the archive was rebuilt and 388 before it, which
 costs seconds and no bandwidth. The `Content-Length` that comes back for free is compared to the size
 the index recorded, and that catches the second-most-likely accident after deletion: a build workflow
 re-run against an existing tag, uploading a rebuilt archive over the old one with `--clobber`. Same
-URL, same name, different file.
+URL, same name, different file. Since 2026-09-30 every build workflow refuses that upload before it
+happens (`tools/no_clobber.py`, below), so this is now the check behind the check rather than the
+only one.
 
 *Is it still the bytes we signed* — which cannot be answered without downloading the whole thing,
 7.17 GiB today and growing with every version published. So a fixed **fraction** is hashed each run
