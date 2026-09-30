@@ -331,5 +331,21 @@ class Baseline(unittest.TestCase):
         self.assertEqual(plan.build, [("php", "8.6.2")])
 
 
+class NotOffered(unittest.TestCase):
+    def test_odd_node_lines_are_not_reported_as_new(self):
+        plan = watch.make_plan(
+            index={"node": ["24.19.0"]}, upstream={"node": ["24.19.0", "25.9.0", "26.10.0"]},
+            tags={}, failures={},
+        )
+        self.assertEqual(plan.new_lines, [("node", "26")])
+
+    def test_other_kinds_keep_every_line(self):
+        plan = watch.make_plan(
+            index={"go": ["1.27.1"]}, upstream={"go": ["1.27.1", "1.28.0", "1.29.0"]},
+            tags={}, failures={},
+        )
+        self.assertEqual(plan.new_lines, [("go", "1.28"), ("go", "1.29")])
+
+
 if __name__ == "__main__":
     unittest.main()

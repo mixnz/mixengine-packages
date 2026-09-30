@@ -36,6 +36,11 @@ EXCLUDED = frozenset({"meilisearch"})
 # column of each kind's table in README.md.
 LINE_DEPTH = {"node": 1, "java": 1, "postgres": 1}
 
+# Lines upstream publishes that this repository does not offer, so a new one is not news. Node's
+# odd-numbered lines are Current releases that never become LTS and end after about eight months;
+# the Node row has only ever carried the even ones.
+NOT_OFFERED = {"node": lambda line: int(line) % 2 == 1}
+
 # kind -> (workflow, the input its version goes in). The three list kinds are given a list of one,
 # so one run always names exactly one version.
 WORKFLOWS = {
@@ -119,7 +124,7 @@ def make_plan(index: dict[str, list[str]], upstream: dict[str, list[str]], tags:
         for version in sorted(set(upstream[kind]), key=parts):
             line = line_of(kind, version)
             if line not in floor:
-                if parts(line) > parts(top):
+                if parts(line) > parts(top) and not NOT_OFFERED.get(kind, lambda _: False)(line):
                     new_lines.add(line)
                 continue
             if parts(version) <= parts(floor[line]) or version in index[kind]:
