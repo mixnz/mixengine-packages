@@ -142,8 +142,8 @@ full reasoning is in [docs/the-archive.md](../docs/the-archive.md).
 ## Something tells you a new version exists
 
 `watch-upstream.yml` runs every morning. For every line already in the index — every kind except
-`meilisearch`, which is packed on demand — it asks upstream for every stable patch newer than the
-newest one published, dispatches `build-<kind>.yml` for each **by exact version**, at most four at a
+`meilisearch`, which is packed on demand — it asks upstream for every stable patch published since the
+watch began (2026-09-29) that is not released yet, dispatches `build-<kind>.yml` for each **by exact version**, at most four at a
 time, and runs `publish-index.yml` when anything new was built. You do not run `build.sh` for a new
 patch any more.
 
@@ -162,5 +162,5 @@ To see what it would do without doing it, dispatch it by hand with `dry` left on
 GH_REPO=mixnz/mixengine-packages python tools/watch.py
 ```
 
-A patch older than the newest one in the index is never built by it. Back-filling one is a
+A patch from before the watch began is never built by it. Back-filling one is a
 `release/build.sh <kind> <version>` by hand, exactly as before.

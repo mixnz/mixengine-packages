@@ -6,6 +6,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
 
 import watch  # noqa: E402
 
+BEFORE = "2026-08-17T10:00:00Z"
+AFTER = "2026-09-29T19:00:00Z"
+
 
 class LineOf(unittest.TestCase):
     def test_major_minor_by_default(self):
@@ -22,28 +25,28 @@ class MakePlan(unittest.TestCase):
         plan = watch.make_plan(
             index={"php": ["8.4.24"]},
             upstream={"php": ["8.4.23", "8.4.24", "8.4.25", "8.4.26"]},
-            tags=set(), failures={},
+            tags={}, failures={},
         )
         self.assertEqual(plan.build, [("php", "8.4.25"), ("php", "8.4.26")])
 
     def test_never_back_fills_older_than_the_newest_in_the_index(self):
         plan = watch.make_plan(
             index={"php": ["8.4.24"]}, upstream={"php": ["8.4.20", "8.4.24"]},
-            tags=set(), failures={},
+            tags={}, failures={},
         )
         self.assertEqual(plan.build, [])
 
     def test_compares_numerically(self):
         plan = watch.make_plan(
             index={"go": ["1.27.9"]}, upstream={"go": ["1.27.9", "1.27.10"]},
-            tags=set(), failures={},
+            tags={}, failures={},
         )
         self.assertEqual(plan.build, [("go", "1.27.10")])
 
     def test_existing_tag_is_published_not_rebuilt(self):
         plan = watch.make_plan(
             index={"php": ["8.4.24"]}, upstream={"php": ["8.4.25"]},
-            tags={"php-8.4.25"}, failures={},
+            tags={"php-8.4.25": AFTER}, failures={},
         )
         self.assertEqual(plan.build, [])
         self.assertEqual(plan.publish_only, [("php", "8.4.25")])
@@ -51,7 +54,7 @@ class MakePlan(unittest.TestCase):
     def test_skips_after_threshold_failures(self):
         plan = watch.make_plan(
             index={"mysql": ["8.0.44"]}, upstream={"mysql": ["8.0.45"]},
-            tags=set(), failures={("mysql", "8.0.45"): 3},
+            tags={}, failures={("mysql", "8.0.45"): 3},
         )
         self.assertEqual(plan.build, [])
         self.assertEqual(plan.skipped, [("mysql", "8.0.45", 3)])
@@ -59,7 +62,7 @@ class MakePlan(unittest.TestCase):
     def test_new_line_is_reported_not_built(self):
         plan = watch.make_plan(
             index={"php": ["8.5.9"]}, upstream={"php": ["8.5.9", "8.6.0"]},
-            tags=set(), failures={},
+            tags={}, failures={},
         )
         self.assertEqual(plan.build, [])
         self.assertEqual(plan.new_lines, [("php", "8.6")])
@@ -67,26 +70,26 @@ class MakePlan(unittest.TestCase):
     def test_old_line_not_in_index_is_neither_built_nor_new(self):
         plan = watch.make_plan(
             index={"php": ["8.5.9"]}, upstream={"php": ["5.6.40", "8.5.9"]},
-            tags=set(), failures={},
+            tags={}, failures={},
         )
         self.assertEqual((plan.build, plan.new_lines), ([], []))
 
     def test_meilisearch_is_never_watched(self):
         plan = watch.make_plan(
             index={"meilisearch": ["1.53.2"]}, upstream={"meilisearch": ["1.53.3"]},
-            tags=set(), failures={},
+            tags={}, failures={},
         )
         self.assertEqual(plan.build, [])
 
     def test_kind_without_upstream_answer_is_left_alone(self):
-        plan = watch.make_plan(index={"php": ["8.4.24"]}, upstream={}, tags=set(), failures={})
+        plan = watch.make_plan(index={"php": ["8.4.24"]}, upstream={}, tags={}, failures={})
         self.assertEqual(plan.build, [])
 
     def test_planned_versions_are_exact_upstream_versions(self):
         upstream = {"php": ["8.4.25"], "node": ["22.24.0"]}
         plan = watch.make_plan(
             index={"php": ["8.4.24"], "node": ["22.23.2"]}, upstream=upstream,
-            tags=set(), failures={},
+            tags={}, failures={},
         )
         for kind, version in plan.build:
             self.assertIn(version, upstream[kind])
@@ -124,7 +127,7 @@ class Titles(unittest.TestCase):
 
 class FakeGh:
     def __init__(self, tags=(), runs=None):
-        self._tags, self._runs = set(tags), runs or {}
+        self._tags, self._runs = dict(tags), runs or {}
         self.dispatched = []
 
     def tags(self):
@@ -292,6 +295,40 @@ class RefusedDispatch(unittest.TestCase):
                                   deadline=10_000, clock=clock, sleep=clock.sleep)
         self.assertEqual(results[("php", "8.4.26")], ("lost", None))
         self.assertEqual(results[("node", "24.21.0")], ("lost", None))
+
+
+class Baseline(unittest.TestCase):
+    def test_a_patch_that_failed_while_a_newer_one_landed_is_still_built(self):
+        plan = watch.make_plan(
+            index={"php": ["8.4.24", "8.4.26"]},
+            upstream={"php": ["8.4.24", "8.4.25", "8.4.26"]},
+            tags={"php-8.4.24": BEFORE, "php-8.4.26": AFTER}, failures={},
+        )
+        self.assertEqual(plan.build, [("php", "8.4.25")])
+
+    def test_a_version_already_in_the_index_is_neither_built_nor_republished(self):
+        plan = watch.make_plan(
+            index={"php": ["8.4.24", "8.4.26"]},
+            upstream={"php": ["8.4.24", "8.4.26"]},
+            tags={"php-8.4.24": BEFORE, "php-8.4.26": AFTER}, failures={},
+        )
+        self.assertEqual((plan.build, plan.publish_only), ([], []))
+
+    def test_gaps_from_before_the_watch_are_not_back_filled(self):
+        plan = watch.make_plan(
+            index={"php": ["8.4.20", "8.4.24"]},
+            upstream={"php": ["8.4.20", "8.4.22", "8.4.24"]},
+            tags={"php-8.4.20": BEFORE, "php-8.4.24": BEFORE}, failures={},
+        )
+        self.assertEqual(plan.build, [])
+
+    def test_a_line_first_packed_after_the_watch_starts_at_its_oldest_version(self):
+        plan = watch.make_plan(
+            index={"php": ["8.5.9", "8.6.1"]},
+            upstream={"php": ["8.6.0", "8.6.1", "8.6.2"]},
+            tags={"php-8.5.9": BEFORE, "php-8.6.1": AFTER}, failures={},
+        )
+        self.assertEqual(plan.build, [("php", "8.6.2")])
 
 
 if __name__ == "__main__":

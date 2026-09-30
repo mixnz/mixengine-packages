@@ -19,7 +19,7 @@ blueprint pinning one of those versions cannot be satisfied, and nothing in the 
 | Question | Answer |
 | --- | --- |
 | How far does automation go? | **Build and publish.** A new patch goes all the way to the signed index with nobody involved. |
-| Which versions? | **Every patch upstream published after the newest one in the index**, per line. No back-fill of history before that. |
+| Which versions? | **Every patch upstream published after the watch began** (2026-09-29), per line. No back-fill of history before that. |
 | How often? | **Daily.** |
 
 ## Scope
@@ -33,7 +33,7 @@ recipe can build an exact version on request.
   possibly a written reason for an empty cell — the steps in "A new line" of `release/README.md`.
   The watcher lists it in the report; a person does the rest.
 - **`meilisearch`.** Packed on demand, never back-filled, by its own design.
-- **Versions older than the newest one in the index.** That is back-fill, and was decided against.
+- **Versions older than what a line had when the watch began.** That is back-fill, and was decided against.
 
 ## How it works
 
@@ -60,8 +60,13 @@ Stdlib only, like every tool here. For each kind:
    recipe already resolves against. The query is **imported from the recipe**, not rewritten: each
    `tools/<kind>.py` gets (or already has) a function `upstream_versions() -> list[str]`, so the
    watcher and the builder cannot disagree about what upstream said.
-3. **Missing** = upstream versions of a line that are *newer than the newest version of that line in
-   the index* and that have **no release tag** `<kind>-<version>` yet.
+3. **Missing** = upstream versions of a line that are *newer than the line's floor*, are not in the
+   index, and have **no release tag** `<kind>-<version>` yet. The **floor** is the newest version the
+   line had before the watch began (`WATCH_SINCE`, read off each release's creation date), or the
+   oldest version of a line first packed after it.
+   - Not "newer than the newest in the index": that was the first rule, and on its first real run
+     it dropped PHP 8.4.25 for good — its Windows leg failed the day 8.4.26 succeeded, and from then
+     on 8.4.25 was "older than the newest" and never looked at again, nor reported.
    - A tag that exists but is not in the index is not rebuilt — it only makes the run publish the
      index. This is what keeps the watcher from ever clobbering a published tag
      ([`docs/the-archive.md`](../../the-archive.md)).

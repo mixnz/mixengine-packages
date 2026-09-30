@@ -2,7 +2,7 @@
 """Notice a new patch upstream, build it, publish the index — every day, without a person.
 
 `release/README.md` used to say that nothing tells you a new version exists. This is the thing that
-does. It builds only patches of lines already in the index and newer than the newest one there; a
+does. It builds only patches of lines already in the index, published since the watch began; a
 whole new line needs a README row and an end-of-life date, so it is reported and left to a person.
 The design is docs/superpowers/specs/2026-09-30-upstream-watch-design.md.
 
@@ -84,28 +84,45 @@ class Plan:
     new_lines: list[tuple[str, str]] = field(default_factory=list)
 
 
-def make_plan(index: dict[str, list[str]], upstream: dict[str, list[str]], tags: set[str],
+# The day the watch began. What a line had before it is the floor nothing below is back-filled from;
+# everything upstream published after it is owed, even once a newer patch has landed — otherwise a
+# patch whose build failed on the day its successor succeeded would be passed over for good.
+WATCH_SINCE = "2026-09-29"
+
+
+def floors(kind: str, versions: list[str], tags: dict[str, str]) -> dict[str, str]:
+    """Per line, the newest version published before the watch began, or — for a line first packed
+    after it — the oldest version it has. A version whose tag is unknown counts as from before."""
+    before: dict[str, list[str]] = {}
+    after: dict[str, list[str]] = {}
+    for version in versions:
+        created = tags.get(f"{kind}-{version}", "")
+        side = after if created and created[:10] >= WATCH_SINCE else before
+        side.setdefault(line_of(kind, version), []).append(version)
+    found = {line: min(found, key=parts) for line, found in after.items()}
+    found.update({line: max(found, key=parts) for line, found in before.items()})
+    return found
+
+
+def make_plan(index: dict[str, list[str]], upstream: dict[str, list[str]], tags: dict[str, str],
               failures: dict[tuple[str, str], int], threshold: int = 3) -> Plan:
-    """Decide what to build. Pure: everything it knows is passed in."""
+    """Decide what to build. Pure: everything it knows is passed in. *tags* maps each release tag
+    to when it was created."""
     plan = Plan()
     for kind in sorted(index):
         if kind in EXCLUDED or kind not in upstream:
             continue
-        newest: dict[str, str] = {}
-        for version in index[kind]:
-            line = line_of(kind, version)
-            if line not in newest or parts(version) > parts(newest[line]):
-                newest[line] = version
-        top = max(newest, key=parts)
+        floor = floors(kind, index[kind], tags)
+        top = max(floor, key=parts)
 
         new_lines: set[str] = set()
         for version in sorted(set(upstream[kind]), key=parts):
             line = line_of(kind, version)
-            if line not in newest:
+            if line not in floor:
                 if parts(line) > parts(top):
                     new_lines.add(line)
                 continue
-            if parts(version) <= parts(newest[line]):
+            if parts(version) <= parts(floor[line]) or version in index[kind]:
                 continue
             if f"{kind}-{version}" in tags:
                 plan.publish_only.append((kind, version))
@@ -135,9 +152,9 @@ class Gh:
             ["gh", *args, "--repo", self.repo], check=True, capture_output=True, text=True
         ).stdout
 
-    def tags(self) -> set[str]:
-        out = self._run("release", "list", "--limit", "1000", "--json", "tagName")
-        return {entry["tagName"] for entry in json.loads(out)}
+    def tags(self) -> dict[str, str]:
+        out = self._run("release", "list", "--limit", "1000", "--json", "tagName,createdAt")
+        return {entry["tagName"]: entry["createdAt"] for entry in json.loads(out)}
 
     def runs(self, workflow: str) -> list[dict]:
         out = self._run("run", "list", "--workflow", workflow, "--limit", "200",
