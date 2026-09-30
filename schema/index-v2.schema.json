@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mixnz/mixengine-packages/schema/index-v2.schema.json",
+  "title": "MixEngine package index, schema 2: the root",
+  "description": "The one signed document of schema 2. It names every kind and the exact bytes of that kind's file, which is what lets one signature cover all of them: a kind file is believed only because this names its hash.",
+  "type": "object",
+  "required": ["schema", "generated_at", "base_url", "kinds"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": 2,
+      "description": "Bumped only for a change a current client cannot read. Adding an optional field is not one."
+    },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "base_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Where release assets live. An artifact is at {base_url}/{kind}-{version}/{kind}-{version}-{os}-{arch}.{format} and nowhere else, so no kind file can point outside it."
+    },
+    "kinds": {
+      "type": "object",
+      "description": "Every kind there is. One that is not here does not exist, and one that is here is never dropped. Its file is index-v2-<kind>.json beside this document.",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["sha256", "size"],
+        "additionalProperties": false,
+        "properties": {
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "size": { "type": "integer", "minimum": 1 }
+        }
+      }
+    }
+  }
+}
