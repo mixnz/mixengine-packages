@@ -25,6 +25,7 @@ import json
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -113,13 +114,24 @@ def verdicts(releases: list[dict], index: dict, recheck: str = "") -> tuple[list
     return sorted(look), said
 
 
-def listing() -> list[dict]:
-    """Every release of this repository with its assets — all of them, however many there are."""
-    done = subprocess.run(
-        ["gh", "api", "--paginate", "--slurp", "repos/{owner}/{repo}/releases?per_page=100"],
-        capture_output=True, text=True, check=True,
-    )
-    return [release for page in json.loads(done.stdout) for release in page]
+def listing(run=subprocess.run, tries: int = 3, pause: float = 20) -> list[dict]:
+    """Every release of this repository with its assets — all of them, however many there are.
+
+    Asked up to *tries* times, because the API fails for a moment often enough to have done it on
+    this tool's second run, and the daily watcher's publish should not be lost to that. Only
+    stdout is captured: what `gh` says when it fails goes to the log, which is the one place
+    anybody will look for why.
+    """
+    command = ["gh", "api", "--paginate", "--slurp", "repos/{owner}/{repo}/releases?per_page=100"]
+    for attempt in range(1, tries + 1):
+        done = run(command, stdout=subprocess.PIPE, text=True)
+        if done.returncode == 0:
+            return [release for page in json.loads(done.stdout) for release in page]
+        print(f"the release listing failed (try {attempt} of {tries})", flush=True)
+        if attempt < tries:
+            time.sleep(pause)
+    raise SystemExit(f"the release listing could not be read in {tries} tries; nothing was "
+                     f"looked at and nothing is published from a listing nobody saw")
 
 
 def download(tag: str, directory: Path) -> None:

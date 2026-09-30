@@ -1,4 +1,5 @@
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -173,6 +174,42 @@ class Gather(unittest.TestCase):
         self.assertEqual(refused, ["node-22.1.0"])
         self.assertEqual([kind for kind, _, _ in found], ["php"])
         self.assertEqual(list(work.iterdir()), [])
+
+
+class Asked(unittest.TestCase):
+    """`gh api` answering for the release listing: a stand-in for `subprocess.run`."""
+
+    def runner(self, *answers):
+        calls = []
+
+        def run(command, **how):
+            calls.append(how)
+            code, out = answers[min(len(calls), len(answers)) - 1]
+            return subprocess.CompletedProcess(command, code, stdout=out)
+
+        return run, calls
+
+    def test_the_pages_are_joined_into_one_listing(self):
+        run, _ = self.runner((0, json.dumps([[{"tag_name": "a"}], [{"tag_name": "b"}]])))
+        self.assertEqual(gather.listing(run=run), [{"tag_name": "a"}, {"tag_name": "b"}])
+
+    def test_an_api_that_fails_once_is_asked_again(self):
+        run, calls = self.runner((1, ""), (0, json.dumps([[{"tag_name": "a"}]])))
+        self.assertEqual(gather.listing(run=run, pause=0), [{"tag_name": "a"}])
+        self.assertEqual(len(calls), 2)
+
+    def test_an_api_that_keeps_failing_is_refused_after_three_tries(self):
+        run, calls = self.runner((1, ""))
+        with self.assertRaises(SystemExit) as refused:
+            gather.listing(run=run, pause=0)
+        self.assertEqual(len(calls), 3)
+        self.assertIn("3 tries", str(refused.exception))
+
+    def test_what_gh_says_when_it_fails_is_left_for_the_log(self):
+        run, calls = self.runner((0, "[]"))
+        gather.listing(run=run)
+        self.assertNotIn("stderr", calls[0])
+        self.assertNotIn("capture_output", calls[0])
 
 
 if __name__ == "__main__":
