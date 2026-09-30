@@ -18,6 +18,17 @@ offering emulation under the name of a version. Where a line has no build for a 
 `tools/node.py` says so and exits 75 — an empty cell of the table, which the workflow skips rather
 than fails, so that one absent build does not stop the release of the five that exist.
 
+**The Linux cells of 26 carry `lib/libatomic.so.1`.** Node 26 is the first line whose Linux binary
+needs it: it is the compiler's runtime, like `libgcc_s`, but its own package (`libatomic1`) that
+minimal systems leave out, so `relocate` does not count it as the machine's and the moved tree
+reached outside itself on the first build. `node.bundle_foreign` copies it beside the runtime with
+the GCC licence and sets `bin/node`'s RUNPATH to `$ORIGIN/../lib`, both declared in `upstream.added`
+and `upstream.changed` — the way MariaDB has always carried it. A line that needs nothing foreign is
+not touched: 24.21.0 built after this change bundles nothing and has no RUNPATH set.
+
+**Only even lines are offered.** An odd line is a Current release that never becomes LTS and ends
+about eight months after it starts; `watch-upstream.yml` does not report one as new.
+
 One decision was needed, and it is the only one this row makes: **`include/node` is dropped, on
 every cell**. Upstream ships 59 MB of C++ headers to Unix and none at all to Windows — 2,726 files
 in 24.19.0, 29.7% of that archive, byte for byte its own `node-v24.19.0-headers.tar.gz` — so one

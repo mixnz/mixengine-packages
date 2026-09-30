@@ -82,7 +82,9 @@ Windows-on-ARM column, upstream publishing no ARM64 Windows PHP to borrow.
 | **20** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **22** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **24** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **26** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
+Even lines only — an odd line is a Current release that never becomes LTS and ends within months.
 The floor is 16 because that is where a *native* build exists for every cell, and Windows on ARM
 starts at 20.0.0 because that is upstream's first build for it.
 
