@@ -71,6 +71,27 @@ many there are. Which slice an asset is in comes from a digest of its URL, so a 
 mid-cycle joins one fixed slice and is hashed inside the cycle instead of reshuffling everything
 else out of the week it was in.
 
+## Two archives were overwritten on 2026-09-29, and this is the record of it
+
+`php-8.2.33-linux-aarch64.tar.zst` and `php-8.2.33-macos-x86_64.tar.zst`, with their manifests, were
+uploaded over at 18:25 UTC — the second failure mode above, arriving through a build of a *different*
+version. `build-php.yml` was dispatched with `branch=8.2`, and each leg resolved the branch on its own:
+static-php-cli answered 8.2.33 on those two runners while php.net and the other three said 8.2.34.
+The release job files an artifact under the version its manifest states, so those two went to the
+already-published `php-8.2.33` with `--clobber`, and `php-8.2.34` was published short of both cells.
+
+The bytes that were there are gone. The index was regenerated the same evening, so it describes the
+files that are there now and its signature verifies; a blueprint that pinned either old sha256 will
+read the artifact as a different file, for the reason this document gives. `php-8.2.34`'s two cells
+were built again from the exact version and added without replacing anything.
+
+What changed: every build workflow's `release` job now runs `tools/no_clobber.py` before it uploads
+anything and refuses the whole run if an artifact would land on an asset that already exists — so
+this, a re-run of a published version, and any route to the same result nobody has found yet all
+stop there, with nothing uploaded. Replacing is still possible and is now a decision: the `replace`
+input, `release/build.sh --replace`. Separately, `build-php.yml` resolves a branch once in its `plan`
+job so its legs cannot disagree, and the daily watcher only ever dispatches exact versions.
+
 ## The signing key
 
 The index is signed with minisign (Ed25519) and the public key is compiled into MixEngine, so

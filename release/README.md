@@ -133,11 +133,19 @@ not empty because nobody looked.
 
 ## Do not
 
-**Do not re-run an old build over a tag that is already published.** A new patch is a new version is
-a new release, so the flow above is safe. But re-running an old build uploads over the existing
-assets with `--clobber`: same URL, same name, different bytes — while the signature on the published
-index still describes the old ones. `check-archive.yml` will catch it the following Wednesday. The
-full reasoning is in [docs/the-archive.md](../docs/the-archive.md).
+**Nothing published is uploaded over, unless you say so.** Every build's `release` job runs
+`tools/no_clobber.py` before it uploads anything, and refuses the whole run if any artifact would
+land on an asset that already exists. Two things used to get there silently: a re-run of a
+published version, and a line whose legs resolved it differently — each leg files its artifact
+under the version it built, so one lands on an older tag. The second happened to `php-8.2.33` on
+2026-09-29 (see [docs/the-archive.md](../docs/the-archive.md)).
+
+**If a run is refused**, read which tag it names. A leg that built an older version means the line
+was resolved differently on different runners: dispatch the exact version instead,
+`release/build.sh <kind> <x.y.z>` (the watcher always does, and `build-php.yml` resolves a branch
+once for every leg). A version you really mean to replace — a broken artifact being fixed — is
+`release/build.sh <kind> <x.y.z> --replace`, then `release/publish.sh`. That breaks every hash
+pinned against the old bytes, which is why it is never the default.
 
 ## Something tells you a new version exists
 

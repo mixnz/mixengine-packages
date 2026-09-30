@@ -22,6 +22,11 @@ on:
         required: false
         default: false
         type: boolean
+      replace:
+        description: 'Upload over assets already published. Breaks every hash pinned against them; see docs/the-archive.md.'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -89,9 +94,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { path: incoming, merge-multiple: true }
+      # Before anything is uploaded: a leg that built a version already published would otherwise
+      # land on it with --clobber. See tools/no_clobber.py and docs/the-archive.md.
+      - name: refuse to replace what is published
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/no_clobber.py incoming ${{ inputs.replace && '--replace' || '' }}
       - name: publish one release per version
         env:
           GH_TOKEN: ${{ github.token }}
+          REPLACE: ${{ inputs.replace && 'true' || '' }}
         run: |
           set -euo pipefail
           versions=$(jq -r '.version' incoming/*.json | sort -u)
@@ -110,5 +122,5 @@ jobs:
                 --title "mongosh $version" \
                 --notes "Relocatable mongosh $version for MixEngine, repacked from mongodb-js/mongosh under Apache-2.0. Every artifact answered --version from a directory it had been moved to before being published. This is the shell the MongoDB server archives stopped carrying at 6.0; it is versioned on its own clock and pairs with any server line this repository offers."
             fi
-            gh release upload "$tag" "${assets[@]}" --clobber
+            gh release upload "$tag" "${assets[@]}" ${REPLACE:+--clobber}
           done

@@ -26,6 +26,11 @@ on:
         required: false
         default: false
         type: boolean
+      replace:
+        description: 'Upload over assets already published. Breaks every hash pinned against them; see docs/the-archive.md.'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -86,9 +91,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { path: incoming, merge-multiple: true }
+      # Before anything is uploaded: a leg that built a version already published would otherwise
+      # land on it with --clobber. See tools/no_clobber.py and docs/the-archive.md.
+      - name: refuse to replace what is published
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/no_clobber.py incoming ${{ inputs.replace && '--replace' || '' }}
       - name: publish one release per version
         env:
           GH_TOKEN: ${{ github.token }}
+          REPLACE: ${{ inputs.replace && 'true' || '' }}
         run: |
           set -euo pipefail
           versions=$(jq -r '.version' incoming/*.json | sort -u)
@@ -105,5 +117,5 @@ jobs:
                 --title "nginx $version" \
                 --notes "Relocatable nginx $version for MixEngine. Five cells: macOS and Linux on both architectures compiled from upstream's own source release, and Windows on x86_64 borrowed from upstream's own zip. Every download was checked against the detached PGP signature nginx publishes beside it, verified against a key fingerprint pinned in tools/nginx.py — nginx states no digest of any of its archives, anywhere. The compiled cells use upstream's own Windows configure line: the same twenty-two modules, and PCRE2, zlib and OpenSSL compiled in statically, so the binary imports nothing outside the C runtime. HTTP/3 is off on every cell because the Windows build has no UDP support and a row must mean one thing. **The Windows artifact is a 32-bit x86 binary running under WOW64 — upstream has never published a 64-bit or ARM64 Windows build of nginx — and its mixengine-artifact.json carries a lacks block naming what upstream's own documentation calls a beta.** Every artifact was run as a web server from a directory it had been moved to before being published: nginx -t against a rendered configuration, a request actually served, the configuration rewritten and reloaded with nginx -s reload until the new body came back, and nginx -s quit. Run it as nginx -p <prefix> -c conf/nginx.conf -e stderr; the binaries carry no compiled-in prefix. See mixengine-artifact.json inside each one for what was proven."
             fi
-            gh release upload "$tag" "${assets[@]}" --clobber
+            gh release upload "$tag" "${assets[@]}" ${REPLACE:+--clobber}
           done

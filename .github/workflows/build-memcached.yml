@@ -35,6 +35,11 @@ on:
         required: false
         default: false
         type: boolean
+      replace:
+        description: 'Upload over assets already published. Breaks every hash pinned against them; see docs/the-archive.md.'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -111,9 +116,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { path: incoming, merge-multiple: true }
+      # Before anything is uploaded: a leg that built a version already published would otherwise
+      # land on it with --clobber. See tools/no_clobber.py and docs/the-archive.md.
+      - name: refuse to replace what is published
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/no_clobber.py incoming ${{ inputs.replace && '--replace' || '' }}
       - name: publish one release per version
         env:
           GH_TOKEN: ${{ github.token }}
+          REPLACE: ${{ inputs.replace && 'true' || '' }}
         run: |
           set -euo pipefail
           versions=$(jq -r '.version' incoming/*.json | sort -u)
@@ -130,5 +142,5 @@ jobs:
                 --title "memcached $version" \
                 --notes "Relocatable memcached $version for MixEngine, compiled from upstream's own source release against the SHA-1 published beside it at memcached.org. Five cells: macOS and Linux on both architectures, and Windows on x86_64. libevent 2.1.13-stable is compiled in statically and its licence ships beside memcached's; TLS, SASL, the proxy and the shutdown command are all off. On macOS and Linux that makes the archive one binary that imports nothing outside the C runtime. The Windows archive is two files: upstream has no native Win32 build system, so it is built with Cygwin's toolchain on the same configure line with nothing patched, and cygwin1.dll travels beside the binary — it is LGPLv3, its text ships in licenses/ and licenses/CYGWIN-SOURCE.txt names where its source is published. There is no Windows aarch64 artifact: Cygwin has no aarch64 port, and the x86_64 image runs there only under emulation, which this repository does not publish under an aarch64 manifest. Every artifact was run as a cache from a directory it had been moved to before being published — started on a free loopback port with nothing of the build environment on PATH, answering version over the text protocol, a key stored and read back, and stopped the way the supervisor stops it — see mixengine-artifact.json inside each one for what was proven."
             fi
-            gh release upload "$tag" "${assets[@]}" --clobber
+            gh release upload "$tag" "${assets[@]}" ${REPLACE:+--clobber}
           done

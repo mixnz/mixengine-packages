@@ -58,15 +58,21 @@ EOF
   cat <<'EOF'
 
 Pass --no-release to build without publishing, when you only want to look at the artifacts.
+
+Pass --replace only to upload over assets already published — a broken artifact being fixed. The
+run refuses otherwise, before uploading anything, because replacing published bytes breaks every
+hash pinned against them (docs/the-archive.md). Publish the index again afterwards.
 EOF
   exit 0
 fi
 
 release=true
+replace=false
 args=()
 for arg in "$@"; do
   case "$arg" in
     --no-release) release=false ;;
+    --replace) replace=true ;;
     *) args+=("$arg") ;;
   esac
 done
@@ -105,7 +111,12 @@ else
 fi
 echo
 
-dispatch "$workflow" "$repo" -f "$input=$version" -f "release=$release"
+if [[ "$replace" == true ]]; then
+  echo "replace:  true  (published assets of this version WILL be uploaded over)"
+  echo
+fi
+
+dispatch "$workflow" "$repo" -f "$input=$version" -f "release=$release" -f "replace=$replace"
 
 echo
 if [[ "$release" == true ]]; then

@@ -22,6 +22,11 @@ on:
         required: false
         default: false
         type: boolean
+      replace:
+        description: 'Upload over assets already published. Breaks every hash pinned against them; see docs/the-archive.md.'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -69,9 +74,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { path: incoming, merge-multiple: true }
+      # Before anything is uploaded: a leg that built a version already published would otherwise
+      # land on it with --clobber. See tools/no_clobber.py and docs/the-archive.md.
+      - name: refuse to replace what is published
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/no_clobber.py incoming ${{ inputs.replace && '--replace' || '' }}
       - name: publish one release per version
         env:
           GH_TOKEN: ${{ github.token }}
+          REPLACE: ${{ inputs.replace && 'true' || '' }}
         run: |
           set -euo pipefail
           versions=$(jq -r '.version' incoming/*.json | sort -u)
@@ -88,5 +100,5 @@ jobs:
                 --title "Apache httpd $version" \
                 --notes "Relocatable Apache httpd $version for MixEngine, compiled from the Apache Software Foundation's source release against the SHA-512 published beside it, on all six cells: macOS and Linux on both architectures with configure and make, Windows on x86_64 and ARM64 with MSVC and upstream's CMake builds. APR, APR-util, OpenSSL, PCRE2, zlib, nghttp2 and expat are pinned versions built from source — static on Unix, DLLs beside httpd.exe on Windows, where the Visual C++ redistributable is a declared requirement. One module set on every cell, every module shared: serving, rewrite, access_compat for .htaccess files written for 2.2, proxy_fcgi for PHP, ssl and http2; no mod_php anywhere. Every artifact was run as a web server from a directory it had been moved to before being published — started with -d <archive> -f <rendered conf>, every module loaded, a static file served, a path rewritten by .htaccess under Order allow,deny and deflated, and the server stopped with httpd -k stop — see mixengine-artifact.json inside each one for what was proven."
             fi
-            gh release upload "$tag" "${assets[@]}" --clobber
+            gh release upload "$tag" "${assets[@]}" ${REPLACE:+--clobber}
           done

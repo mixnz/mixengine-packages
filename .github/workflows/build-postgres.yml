@@ -29,6 +29,11 @@ on:
         required: false
         default: false
         type: boolean
+      replace:
+        description: 'Upload over assets already published. Breaks every hash pinned against them; see docs/the-archive.md.'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -136,9 +141,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { path: incoming, merge-multiple: true }
+      # Before anything is uploaded: a leg that built a version already published would otherwise
+      # land on it with --clobber. See tools/no_clobber.py and docs/the-archive.md.
+      - name: refuse to replace what is published
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/no_clobber.py incoming ${{ inputs.replace && '--replace' || '' }}
       - name: publish one release per version
         env:
           GH_TOKEN: ${{ github.token }}
+          REPLACE: ${{ inputs.replace && 'true' || '' }}
         run: |
           set -euo pipefail
           versions=$(jq -r '.version' incoming/*.json | sort -u)
@@ -157,5 +169,5 @@ jobs:
                 --title "PostgreSQL $version" \
                 --notes "Relocatable PostgreSQL $version for MixEngine, repacked from two publishers because no one of them covers the table. Windows and macOS come from EnterpriseDB's binary archives — one Windows x86_64 zip and one universal macOS zip, which is why both Apple cells carry the same build proven separately on each; EDB publishes no checksum for those, and upstream.verified_against says so in those words. Each macOS artifact holds only the slice it can execute, lifted out of the universal binary as a byte range and re-checked against the code signature EDB had already put on that slice, and the dylib version chains upstream shipped as whole copies are links again — 362 MB of tree becomes 82 MB, with every one of the 173 files this touched named in upstream.changed. Both Linux cells come from the PostgreSQL project's own apt repository, where a signed Release file states the digest of the package index and the index states the digest of every package, and where every minor ever published is still kept. pgAdmin, StackBuilder, the headers, the static and import libraries, PGXS, the LLVM JIT that only one publisher offers, and the procedural languages that need an interpreter nobody installed are not shipped; every one of them is named in upstream.removed. All five cells offer the same commands and the same extensions, which tools/parity.py checks rather than assumes. Every artifact was run as a database from a directory it had been moved to before being published — a cluster bootstrapped with initdb, the server started against a rendered postgresql.conf, pg_isready answered, a row written and read back, hstore and pgcrypto created and used, and the server stopped with pg_ctl stop -m fast — see mixengine-artifact.json inside each one for what was proven, and its requires field for what it expects the machine to have."
             fi
-            gh release upload "$tag" "${assets[@]}" --clobber
+            gh release upload "$tag" "${assets[@]}" ${REPLACE:+--clobber}
           done
