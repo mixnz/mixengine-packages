@@ -70,7 +70,12 @@ Stdlib only, like every tool here. For each kind:
    - A tag that exists but is not in the index is not rebuilt — it only makes the run publish the
      index. This is what keeps the watcher from ever clobbering a published tag
      ([`docs/the-archive.md`](../../the-archive.md)).
-4. **New lines** = upstream lines newer than the newest line in the index, reported only.
+4. **New lines** = upstream lines newer than the newest line in the index, reported — and each is
+   **built once without a release** at its newest version (`release=false`, so nothing is uploaded
+   and the index is not published for it). The report says whether it built and which legs failed:
+   on the first real run, Node 26 would have said "Linux: libatomic" a day before anyone looked.
+   Found again by its `(no release)` run name, so a version is tried once; a newer patch of the line
+   is tried afresh. Node's odd lines are not reported at all.
 
 Output is `plan.json`: `{kind: [exact versions]}`, plus `new_lines` and `skipped`.
 

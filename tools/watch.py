@@ -87,6 +87,11 @@ class Plan:
     publish_only: list[tuple[str, str]] = field(default_factory=list)
     skipped: list[tuple[str, str, int]] = field(default_factory=list)
     new_lines: list[tuple[str, str]] = field(default_factory=list)
+    # The newest version of each new line, built without a release so a person deciding whether to
+    # add the line knows whether the recipes already handle it. Never published, never publishing.
+    trials: list[tuple[str, str]] = field(default_factory=list)
+    # Trials a previous run already dispatched, as (outcome, run id): each version is tried once.
+    tried: dict[tuple[str, str], tuple[str, int]] = field(default_factory=dict)
 
 
 # The day the watch began. What a line had before it is the floor nothing below is back-filled from;
@@ -120,12 +125,12 @@ def make_plan(index: dict[str, list[str]], upstream: dict[str, list[str]], tags:
         floor = floors(kind, index[kind], tags)
         top = max(floor, key=parts)
 
-        new_lines: set[str] = set()
+        new_lines: dict[str, str] = {}
         for version in sorted(set(upstream[kind]), key=parts):
             line = line_of(kind, version)
             if line not in floor:
                 if parts(line) > parts(top) and not NOT_OFFERED.get(kind, lambda _: False)(line):
-                    new_lines.add(line)
+                    new_lines[line] = version  # ascending, so the last one written is the newest
                 continue
             if parts(version) <= parts(floor[line]) or version in index[kind]:
                 continue
@@ -137,7 +142,9 @@ def make_plan(index: dict[str, list[str]], upstream: dict[str, list[str]], tags:
                 plan.skipped.append((kind, version, failed))
                 continue
             plan.build.append((kind, version))
-        plan.new_lines += [(kind, line) for line in sorted(new_lines, key=parts)]
+        for line in sorted(new_lines, key=parts):
+            plan.new_lines.append((kind, line))
+            plan.trials.append((kind, new_lines[line]))
     return plan
 
 
@@ -169,6 +176,10 @@ class Gh:
     def dispatch(self, workflow: str, fields: dict[str, str]) -> None:
         flags = [item for key, value in fields.items() for item in ("-f", f"{key}={value}")]
         self._run("workflow", "run", workflow, *flags)
+
+    def failed_jobs(self, run_id: int) -> list[str]:
+        out = self._run("run", "view", str(run_id), "--json", "jobs")
+        return [job["name"] for job in json.loads(out)["jobs"] if job["conclusion"] == "failure"]
 
     def view(self, run_id: int) -> dict:
         return json.loads(self._run("run", "view", str(run_id), "--json", "status,conclusion"))
@@ -204,6 +215,7 @@ def gather(gh, index: dict[str, list[str]], ask=upstream.versions) -> tuple[Plan
     answers: dict[str, list[str]] = {}
     errors: dict[str, str] = {}
     failures: dict[tuple[str, str], int] = {}
+    runs_of: dict[str, list[dict]] = {}
     for kind, versions in index.items():
         if kind in EXCLUDED or kind not in WORKFLOWS:
             continue
@@ -212,24 +224,34 @@ def gather(gh, index: dict[str, list[str]], ask=upstream.versions) -> tuple[Plan
         except (SystemExit, OSError, ValueError, KeyError) as error:
             errors[kind] = str(error)
             continue
-        counted = failures_by_title(gh.runs(WORKFLOWS[kind][0]))
+        runs = gh.runs(WORKFLOWS[kind][0])
+        runs_of[kind] = runs
+        counted = failures_by_title(runs)
         for version in answers[kind]:
             if title(kind, version) in counted:
                 failures[(kind, version)] = counted[title(kind, version)]
-    return make_plan(index, answers, gh.tags(), failures), errors
+    plan = make_plan(index, answers, gh.tags(), failures)
+    for kind, version in plan.trials:
+        wanted = title(kind, version) + NO_RELEASE
+        for run in runs_of.get(kind, []):  # newest first
+            if run["displayTitle"] == wanted:
+                outcome = run["conclusion"] if run["status"] == "completed" else "running"
+                plan.tried[(kind, version)] = (outcome or "failure", run["databaseId"])
+                break
+    return plan, errors
 
 
 LIMIT = 4
 APPEAR_WITHIN = 120  # seconds GitHub may take to list a dispatched run
 
 
-def _start(gh, kind: str, version: str, clock, sleep) -> int | None:
+def _start(gh, kind: str, version: str, clock, sleep, release: bool = True) -> int | None:
     """Dispatch one exact version and return its run id, found by title among ids not seen before."""
     workflow, field_name = WORKFLOWS[kind]
-    wanted = title(kind, version)
+    wanted = title(kind, version) + ("" if release else NO_RELEASE)
     before = {run["databaseId"] for run in gh.runs(workflow)}
     try:
-        gh.dispatch(workflow, {field_name: version, "release": "true"})
+        gh.dispatch(workflow, {field_name: version, "release": "true" if release else "false"})
     except subprocess.CalledProcessError as error:
         # One refused dispatch must not end the run before the index is published and the report
         # written. It is reported as lost and tried again tomorrow.
@@ -245,15 +267,19 @@ def _start(gh, kind: str, version: str, clock, sleep) -> int | None:
 
 
 def build_all(gh, jobs: list[tuple[str, str]], deadline: float, limit: int = LIMIT,
-              poll: float = 60, clock=time.monotonic, sleep=time.sleep):
-    """Build every job, at most *limit* at once, until done or *deadline* (on *clock*)."""
+              poll: float = 60, clock=time.monotonic, sleep=time.sleep,
+              trials: list[tuple[str, str]] = ()):
+    """Build every job, at most *limit* at once, until done or *deadline* (on *clock*).
+
+    *trials* share the limit and are dispatched after the jobs, without a release."""
     results: dict[tuple[str, str], tuple[str, int | None]] = {}
-    waiting = list(jobs)
+    waiting = list(jobs) + list(trials)
+    tried = set(trials)
     flying: dict[tuple[str, str], int] = {}
     while waiting or flying:
         while waiting and len(flying) < limit and clock() < deadline:
             job = waiting.pop(0)
-            run_id = _start(gh, *job, clock=clock, sleep=sleep)
+            run_id = _start(gh, *job, clock=clock, sleep=sleep, release=job not in tried)
             if run_id is None:
                 results[job] = ("lost", None)
             else:
@@ -279,7 +305,7 @@ BUDGET = 5 * 3600
 
 
 def should_publish(plan: Plan, results: dict) -> bool:
-    built = any(outcome == "success" for outcome, _ in results.values())
+    built = any(results.get(job, ("",))[0] == "success" for job in plan.build)
     return built or bool(plan.publish_only)
 
 
@@ -287,16 +313,21 @@ def _link(run_id: int | None) -> str:
     return f"https://github.com/{REPO}/actions/runs/{run_id}" if run_id else "—"
 
 
-def render(plan: Plan, errors: dict[str, str], results: dict, published: str | None) -> str | None:
-    """The issue body, or None when there is nothing a person needs to know."""
-    trouble = [job for job, (outcome, _) in results.items() if outcome != "success"]
+def render(plan: Plan, errors: dict[str, str], results: dict, published: str | None,
+           trials: dict | None = None, failed_legs: dict | None = None) -> str | None:
+    """The issue body, or None when there is nothing a person needs to know.
+
+    *trials* is each new line's trial as (outcome, run id), *failed_legs* the jobs of a failed one."""
+    trials, failed_legs = trials or {}, failed_legs or {}
+    built = {job: result for job, result in results.items() if job not in plan.trials}
+    trouble = [job for job, (outcome, _) in built.items() if outcome != "success"]
     if not (trouble or plan.skipped or plan.new_lines or errors):
         return None
     out = ["Written by `tools/watch.py` on its daily run; edited in place, closed when empty.", ""]
-    if results:
+    if built:
         out += ["## Built today", "", "| Version | Outcome | Run |", "| --- | --- | --- |"]
         out += [f"| {kind} {version} | {outcome} | {_link(run_id)} |"
-                for (kind, version), (outcome, run_id) in results.items()]
+                for (kind, version), (outcome, run_id) in built.items()]
         out += ["", f"Index publish: **{published or 'not run'}**", ""]
     if plan.skipped:
         out += ["## Needs a person — no longer retried", ""]
@@ -304,8 +335,20 @@ def render(plan: Plan, errors: dict[str, str], results: dict, published: str | N
                 for kind, version, count in plan.skipped]
         out += ["", "Fix the recipe, then `release/build.sh <kind> <version>` by hand.", ""]
     if plan.new_lines:
-        out += ["## New lines upstream — follow \"A new line\" in release/README.md", ""]
-        out += [f"- {kind} {line}" for kind, line in plan.new_lines]
+        out += ["## New lines upstream — follow \"A new line\" in release/README.md", "",
+                "Each is built once at its newest version without a release, to show whether the "
+                "recipes already handle it. Adding the line is still a person's decision.", ""]
+        trial_of = {(kind, line_of(kind, version)): (kind, version) for kind, version in plan.trials}
+        for kind, line in plan.new_lines:
+            trial = trial_of.get((kind, line))
+            if trial is None:
+                out.append(f"- {kind} {line}")
+                continue
+            outcome, run_id = trials.get(trial, ("not tried", None))
+            said = f"- {kind} {line} — trial of {trial[1]}: **{outcome}**"
+            if failed_legs.get(trial):
+                said += f" in {', '.join(failed_legs[trial])}"
+            out.append(said + (f" ({_link(run_id)})" if run_id else ""))
         out += [""]
     if errors:
         out += ["## Could not ask upstream", ""]
@@ -340,15 +383,20 @@ def main(argv: list[str] | None = None) -> int:
     gh = Gh()
     started = time.monotonic()
     plan, errors = gather(gh, read_index())
-    print(json.dumps({**plan.__dict__, "errors": errors}, indent=2))
+    shown = {**plan.__dict__, "tried": {" ".join(key): value for key, value in plan.tried.items()}}
+    print(json.dumps({**shown, "errors": errors}, indent=2))
     if not args.execute:
         return 0
 
-    results = build_all(gh, plan.build, deadline=started + BUDGET)
+    fresh = [trial for trial in plan.trials if trial not in plan.tried]
+    results = build_all(gh, plan.build, deadline=started + BUDGET, trials=fresh)
+    trials = {**plan.tried, **{trial: results[trial] for trial in fresh if trial in results}}
+    failed_legs = {trial: gh.failed_jobs(run_id) for trial, (outcome, run_id) in trials.items()
+                   if outcome == "failure" and run_id}
     published = None
     if should_publish(plan, results):
         published = _publish(gh, time.monotonic, time.sleep)
-    gh.issue(render(plan, errors, results, published))
+    gh.issue(render(plan, errors, results, published, trials, failed_legs))
     failed = published not in (None, "success")
     return 1 if failed else 0
 

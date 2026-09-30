@@ -162,7 +162,7 @@ class Gather(unittest.TestCase):
 class ScriptedGh:
     """A GitHub whose runs finish after a fixed number of polls."""
 
-    def __init__(self, outcome=None, polls=1, appear=True):
+    def __init__(self, outcome=None, polls=1, appear=True, no_release=False):
         self.outcome = outcome or {}
         self.polls, self.appear = polls, appear
         self._runs, self._seen, self.dispatched = {}, {}, []
@@ -178,8 +178,11 @@ class ScriptedGh:
         version = next(v for k, v in fields.items() if k != "release")
         kind = workflow[len("build-"):-len(".yml")]
         self._next += 1
+        name = watch.title(kind, version)
+        if fields.get("release") == "false":
+            name += watch.NO_RELEASE
         self._runs.setdefault(workflow, []).insert(0, {
-            "databaseId": self._next, "displayTitle": watch.title(kind, version),
+            "databaseId": self._next, "displayTitle": name,
             "status": "in_progress", "conclusion": "",
         })
         self._seen[self._next] = (kind, version, 0)
@@ -262,8 +265,9 @@ class Report(unittest.TestCase):
     def test_publish_when_anything_new_exists(self):
         empty = watch.Plan()
         self.assertFalse(watch.should_publish(empty, {}))
-        self.assertTrue(watch.should_publish(empty, {("php", "8.4.26"): ("success", 1)}))
-        self.assertFalse(watch.should_publish(empty, {("php", "8.4.26"): ("failure", 1)}))
+        planned = watch.Plan(build=[("php", "8.4.26")])
+        self.assertTrue(watch.should_publish(planned, {("php", "8.4.26"): ("success", 1)}))
+        self.assertFalse(watch.should_publish(planned, {("php", "8.4.26"): ("failure", 1)}))
         self.assertTrue(watch.should_publish(watch.Plan(publish_only=[("php", "8.4.25")]), {}))
 
     def test_nothing_to_say_closes_the_issue(self):
@@ -345,6 +349,56 @@ class NotOffered(unittest.TestCase):
             tags={}, failures={},
         )
         self.assertEqual(plan.new_lines, [("go", "1.28"), ("go", "1.29")])
+
+
+class Trials(unittest.TestCase):
+    def test_a_new_line_is_tried_at_its_newest_version(self):
+        plan = watch.make_plan(
+            index={"php": ["8.5.9"]}, upstream={"php": ["8.5.9", "8.6.0", "8.6.2", "8.6.1"]},
+            tags={}, failures={},
+        )
+        self.assertEqual(plan.trials, [("php", "8.6.2")])
+        self.assertEqual(plan.build, [])
+
+    def test_trials_are_dispatched_without_release(self):
+        gh, clock = ScriptedGh(), Clock()
+        results = watch.build_all(gh, [("php", "8.5.10")], deadline=10_000,
+                                  trials=[("php", "8.6.2")], clock=clock, sleep=clock.sleep)
+        self.assertIn(("build-php.yml", {"branch": "8.5.10", "release": "true"}), gh.dispatched)
+        self.assertIn(("build-php.yml", {"branch": "8.6.2", "release": "false"}), gh.dispatched)
+        self.assertEqual(results[("php", "8.6.2")][0], "success")
+
+    def test_a_trial_is_found_by_its_no_release_title(self):
+        gh = ScriptedGh(no_release=True)
+        watch.build_all(gh, [], deadline=10_000, trials=[("php", "8.6.2")],
+                        clock=Clock(), sleep=lambda s: None)
+        self.assertEqual(gh._runs["build-php.yml"][0]["displayTitle"],
+                         "build php 8.6.2 (no release)")
+
+    def test_a_successful_trial_does_not_publish(self):
+        plan = watch.Plan(trials=[("php", "8.6.2")])
+        self.assertFalse(watch.should_publish(plan, {("php", "8.6.2"): ("success", 5)}))
+
+    def test_gather_does_not_try_a_version_twice(self):
+        runs = {"build-php.yml": [{"databaseId": 9, "displayTitle": "build php 8.6.2 (no release)",
+                                   "status": "completed", "conclusion": "failure"}]}
+        plan, _ = watch.gather(FakeGh(runs=runs), {"php": ["8.5.9"]},
+                               ask=lambda kind, lines: ["8.5.9", "8.6.2"])
+        self.assertEqual(plan.trials, [("php", "8.6.2")])
+        self.assertEqual(plan.tried, {("php", "8.6.2"): ("failure", 9)})
+
+    def test_report_puts_each_trial_under_its_new_line(self):
+        plan = watch.Plan(new_lines=[("node", "26"), ("php", "8.6")],
+                          trials=[("node", "26.10.0"), ("php", "8.6.2")])
+        trials = {("node", "26.10.0"): ("failure", 31), ("php", "8.6.2"): ("success", 32)}
+        body = watch.render(plan, {}, {}, None, trials=trials,
+                            failed_legs={("node", "26.10.0"): ["pack (ubuntu-24.04, linux, x86_64)"]})
+        node_line = next(line for line in body.splitlines() if line.startswith("- node 26"))
+        self.assertIn("26.10.0", node_line)
+        self.assertIn("failure", node_line)
+        self.assertIn("pack (ubuntu-24.04, linux, x86_64)", node_line)
+        self.assertIn("actions/runs/31", node_line)
+        self.assertNotIn("Built today", body)
 
 
 if __name__ == "__main__":

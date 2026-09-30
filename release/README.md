@@ -161,7 +161,9 @@ when there is nothing to say:
 - **a build that failed** — it is retried the next day, because it is still missing;
 - **a version that failed three times** — no longer retried. Fix the recipe, then
   `release/build.sh <kind> <version>` by hand;
-- **a new line upstream** — follow "A new line" above; the watcher never adds a line;
+- **a new line upstream** — follow "A new line" above; the watcher never adds a line, but it builds
+  the line's newest version once **without a release** and says under the line whether every leg
+  built and which failed, so you know before you start whether the recipes already handle it;
 - **an upstream it could not ask** — the other kinds went ahead without it.
 
 To see what it would do without doing it, dispatch it by hand with `dry` left on, or locally:
