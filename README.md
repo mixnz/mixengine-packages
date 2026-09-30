@@ -331,6 +331,10 @@ and PHP is reached through `mod_proxy_fcgi` rather than a `mod_php` no PHP row h
 
 - **[Adding a version](docs/adding-a-version.md)** — every recipe's command line, and which workflow
   runs it.
+- **[A new patch arrives by itself](release/README.md#something-tells-you-a-new-version-exists)** —
+  `watch-upstream.yml` asks upstream every morning, builds every patch of a packaged line published
+  since the watch began by exact version, publishes the index, and says in one `upstream-watch`
+  issue what it could not do. A new *line* is still a person's decision.
 - **[Dates are the one claim here that is not about bytes](docs/end-of-life-dates.md)** — why
   `data/eol.json` is transcribed from six publishers and checked on a clock.
 - **[Nothing that has been published may be deleted](docs/the-archive.md)** — what the permanence
