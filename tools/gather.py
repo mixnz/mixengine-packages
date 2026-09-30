@@ -111,3 +111,75 @@ def verdicts(releases: list[dict], index: dict, recheck: str = "") -> tuple[list
         said.append(f"::warning::{tag} is in the index and has no release. The index keeps it; "
                     f"check-archive.yml is what reports it.")
     return sorted(look), said
+
+
+def listing() -> list[dict]:
+    """Every release of this repository with its assets — all of them, however many there are."""
+    done = subprocess.run(
+        ["gh", "api", "--paginate", "--slurp", "repos/{owner}/{repo}/releases?per_page=100"],
+        capture_output=True, text=True, check=True,
+    )
+    return [release for page in json.loads(done.stdout) for release in page]
+
+
+def download(tag: str, directory: Path) -> None:
+    subprocess.run(["gh", "release", "download", tag, "--dir", str(directory), "--pattern", "*"],
+                   check=True)
+
+
+def parity(directory: Path) -> bool:
+    """Whether the cells in *directory* agree. What they disagree about is printed by the check."""
+    return subprocess.run([sys.executable, str(TOOLS / "parity.py"), "--artifacts", str(directory),
+                           "--quiet"]).returncode == 0
+
+
+def gather(tags: list[str], base_url: str, work: Path,
+           download=download, parity=parity) -> tuple[list, list[str]]:
+    """Look at each of *tags* in turn. ``(artifacts found, tags whose cells disagree)``.
+
+    One version on disk at a time, and gone before the next is fetched — including when the check
+    fails, because a run that stops at the first disagreement says nothing about the second.
+    """
+    found, refused = [], []
+    for tag in tags:
+        directory = work / tag
+        directory.mkdir(parents=True, exist_ok=True)
+        try:
+            download(tag, directory)
+            if parity(directory):
+                found += mkindex.collect(directory, base_url)
+            else:
+                refused.append(tag)
+        finally:
+            shutil.rmtree(directory, ignore_errors=True)
+    return found, refused
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--previous", help="path or URL of the published index")
+    parser.add_argument("--base-url", required=True, help="where release assets live")
+    parser.add_argument("--recheck", default="",
+                        help="a kind, or 'all': look at those versions even if nothing changed")
+    parser.add_argument("--work", type=Path, default=Path("work"))
+    parser.add_argument("--out", type=Path, default=Path("work/found.json"))
+    parser.add_argument("--plan", action="store_true", help="decide and say, download nothing")
+    args = parser.parse_args()
+
+    look, said = verdicts(listing(), mkindex.load_previous(args.previous), args.recheck.strip())
+    for line in said:
+        print(line)
+    print(f"{len(look)} version(s) to look at")
+    if args.plan:
+        return
+
+    found, refused = gather(look, args.base_url, args.work)
+    if refused:
+        raise SystemExit(f"{len(refused)} version(s) whose cells disagree: {', '.join(refused)}")
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(json.dumps(found, indent=2) + "\n", encoding="utf-8")
+    print(f"wrote {args.out}: {len(found)} artifact(s)")
+
+
+if __name__ == "__main__":
+    main()

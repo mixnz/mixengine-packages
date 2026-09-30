@@ -133,5 +133,47 @@ class Listing(unittest.TestCase):
         self.assertIn("listing", str(refused.exception))
 
 
+def fake_download(tag, directory):
+    """What `gh release download` leaves: one archive and its manifest."""
+    archive = directory / f"{tag}-linux-x86_64.tar.zst"
+    archive.write_bytes(b"bytes of " + tag.encode())
+    kind, version = tag.rsplit("-", 1)
+    Path(f"{archive}.json").write_text(json.dumps({
+        "kind": kind, "version": version, "os": "linux", "arch": "x86_64",
+        "provides": {kind: f"bin/{kind}"}, "smoke": {"relocated": True}}))
+
+
+class Gather(unittest.TestCase):
+    def test_each_version_is_read_and_gone_before_the_next(self):
+        work = Path(tempfile.mkdtemp())
+        seen = []
+
+        def download(tag, directory):
+            seen.append(sorted(path.name for path in work.iterdir()))
+            fake_download(tag, directory)
+
+        found, refused = gather.gather(["node-22.1.0", "php-8.5.11"], BASE, work,
+                                       download=download, parity=lambda directory: True)
+
+        self.assertEqual(seen, [["node-22.1.0"], ["php-8.5.11"]])
+        self.assertEqual(list(work.iterdir()), [])
+        self.assertEqual(refused, [])
+        self.assertEqual([(kind, version) for kind, version, _ in found],
+                         [("node", "22.1.0"), ("php", "8.5.11")])
+        self.assertEqual(found[1][2]["url"],
+                         f"{BASE}/php-8.5.11/php-8.5.11-linux-x86_64.tar.zst")
+        self.assertEqual(found[1][2]["size"], len(b"bytes of php-8.5.11"))
+
+    def test_a_version_whose_cells_disagree_is_named_and_the_rest_still_looked_at(self):
+        work = Path(tempfile.mkdtemp())
+        found, refused = gather.gather(
+            ["node-22.1.0", "php-8.5.11"], BASE, work, download=fake_download,
+            parity=lambda directory: directory.name != "node-22.1.0")
+
+        self.assertEqual(refused, ["node-22.1.0"])
+        self.assertEqual([kind for kind, _, _ in found], ["php"])
+        self.assertEqual(list(work.iterdir()), [])
+
+
 if __name__ == "__main__":
     unittest.main()

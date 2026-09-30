@@ -179,6 +179,13 @@ def merge(index: dict, found: list, dates: dict, channel: str) -> dict:
     }
 
 
+def read_found(path: Path | None) -> list:
+    """What `tools/gather.py` found: ``[kind, version, artifact]`` per artifact it looked at."""
+    if path is None:
+        return []
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 def serialise(index: dict) -> bytes:
     """The index as it is published: one line, no indentation.
 
@@ -193,6 +200,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--artifacts", type=Path, default=Path("dist"),
                         help="directory of <archive> and <archive>.json pairs")
+    parser.add_argument("--found", type=Path,
+                        help="what tools/gather.py found, merged beside whatever --artifacts holds")
     parser.add_argument("--previous", help="path or URL of the index being extended")
     parser.add_argument("--base-url", required=True,
                         help="where release assets live, e.g. "
@@ -207,6 +216,7 @@ def main() -> None:
 
     dates = eol.read(args.eol) if args.eol.exists() else {}
     found = collect(args.artifacts, args.base_url) if args.artifacts.is_dir() else []
+    found += read_found(args.found)
     previous = load_previous(args.previous)
     moved = rebase(previous, args.base_url)
     index = merge(previous, found, dates, args.channel)
