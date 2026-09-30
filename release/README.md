@@ -67,7 +67,7 @@ constant.
 Adding an extension is a file in `data/extensions/` named after the id it declares, and a run of the
 command above.
 
-## Three things that are silent when you get them wrong, and are handled here
+## Four things that are silent when you get them wrong, and are handled here
 
 1. **`release` defaults to `false`** on every build workflow, and so does `publish` on
    `publish-index`. Dispatching by hand from the GitHub UI and forgetting to turn it on builds
@@ -79,6 +79,12 @@ command above.
 3. **A finished build is not a finished job.** A new release does not enter the index by itself, and
    the signed index is the only thing MixEngine reads. Until `publish.sh` runs, nobody can install
    what you just built.
+4. **The index does not look again at what it already describes.** A publish compares every
+   release asset's digest with the published index and downloads only the versions that are new,
+   gained a cell, or had their bytes replaced. So a change to `tools/parity.py`'s rules, or a
+   manifest corrected by hand, reaches nothing already published until you ask:
+   `gh workflow run publish-index.yml -f publish=true -f recheck=php` for one kind, `-f recheck=all`
+   for everything. Either costs time and not disk — one version is on the runner at a time.
 
 ## What each kind's version may say
 
