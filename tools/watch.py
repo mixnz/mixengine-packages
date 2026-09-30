@@ -16,6 +16,7 @@ Python 3 stdlib only.
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import os
 import subprocess
@@ -72,10 +73,13 @@ def title(kind: str, version: str) -> str:
     return f"build {kind} {version}"
 
 
-def failures_by_title(runs: list[dict]) -> dict[str, int]:
-    """Failed release runs per title. A person's `(no release)` look at a version never counts."""
+def failures_by_title(runs: list[dict], since: str = "") -> dict[str, int]:
+    """Failed release runs per title, created on or after *since* if given. A person's
+    `(no release)` look at a version never counts."""
     counted: dict[str, int] = {}
     for run in runs:
+        if run.get("createdAt", "")[:10] < since:
+            continue
         if run.get("conclusion") == "failure" and not run["displayTitle"].endswith(NO_RELEASE):
             counted[run["displayTitle"]] = counted.get(run["displayTitle"], 0) + 1
     return counted
@@ -92,12 +96,45 @@ class Plan:
     trials: list[tuple[str, str]] = field(default_factory=list)
     # Trials a previous run already dispatched, as (outcome, run id): each version is tried once.
     tried: dict[tuple[str, str], tuple[str, int]] = field(default_factory=dict)
+    # Versions set aside in data/watch-ignore.json, as (kind, version, until). Shown by a dry run,
+    # never reported: the point of the file is that the issue can close.
+    ignored: list[tuple[str, str, str]] = field(default_factory=list)
 
 
 # The day the watch began. What a line had before it is the floor nothing below is back-filled from;
 # everything upstream published after it is owed, even once a newer patch has landed — otherwise a
 # patch whose build failed on the day its successor succeeded would be passed over for good.
 WATCH_SINCE = "2026-09-29"
+
+# Versions a person has looked at and set aside for a while, each with the reason and the day it
+# expires. See read_ignore.
+IGNORE = Path(__file__).resolve().parent.parent / "data" / "watch-ignore.json"
+
+
+def read_ignore(path: Path = IGNORE) -> dict[tuple[str, str], dict[str, str]]:
+    """``{(kind, version): {"reason", "until"}}`` out of *path*; an entry that does not say both why
+    and until when is refused, because an exception nobody can explain is one nobody can lift.
+
+    Set aside *until* a date rather than for good. MySQL 8.0.45 was published with unsigned Linux
+    tarballs; Oracle may add the signatures later, and a permanent entry would never notice. Once
+    *until* passes, the version is built again and only failures from that day on are counted."""
+    if not path.exists():
+        return {}
+    found: dict[tuple[str, str], dict[str, str]] = {}
+    for key, entry in json.loads(path.read_text(encoding="utf-8")).items():
+        if key.startswith("_"):
+            continue
+        pieces = key.split(" ")
+        until = entry.get("until", "") if isinstance(entry, dict) else ""
+        try:
+            datetime.date.fromisoformat(until)
+        except ValueError:
+            until = ""
+        if len(pieces) != 2 or not isinstance(entry, dict) or not entry.get("reason") or not until:
+            raise SystemExit(f"{path}: {key!r} needs to be \"<kind> <version>\" with a reason and "
+                             "an until date (YYYY-MM-DD)")
+        found[(pieces[0], pieces[1])] = {"reason": entry["reason"], "until": until}
+    return found
 
 
 def floors(kind: str, versions: list[str], tags: dict[str, str]) -> dict[str, str]:
@@ -115,9 +152,13 @@ def floors(kind: str, versions: list[str], tags: dict[str, str]) -> dict[str, st
 
 
 def make_plan(index: dict[str, list[str]], upstream: dict[str, list[str]], tags: dict[str, str],
-              failures: dict[tuple[str, str], int], threshold: int = 3) -> Plan:
+              failures: dict[tuple[str, str], int], threshold: int = 3,
+              ignored: dict | None = None, today: str | None = None) -> Plan:
     """Decide what to build. Pure: everything it knows is passed in. *tags* maps each release tag
-    to when it was created."""
+    to when it was created; *ignored* is `read_ignore`'s answer, honoured while *today* is before
+    each entry's until."""
+    ignored = ignored or {}
+    today = today or datetime.date.today().isoformat()
     plan = Plan()
     for kind in sorted(index):
         if kind in EXCLUDED or kind not in upstream:
@@ -136,6 +177,10 @@ def make_plan(index: dict[str, list[str]], upstream: dict[str, list[str]], tags:
                 continue
             if f"{kind}-{version}" in tags:
                 plan.publish_only.append((kind, version))
+                continue
+            aside = ignored.get((kind, version))
+            if aside and today < aside["until"]:
+                plan.ignored.append((kind, version, aside["until"]))
                 continue
             failed = failures.get((kind, version), 0)
             if failed >= threshold:
@@ -170,7 +215,7 @@ class Gh:
 
     def runs(self, workflow: str) -> list[dict]:
         out = self._run("run", "list", "--workflow", workflow, "--limit", "200",
-                        "--json", "databaseId,displayTitle,status,conclusion")
+                        "--json", "databaseId,displayTitle,status,conclusion,createdAt")
         return json.loads(out)
 
     def dispatch(self, workflow: str, fields: dict[str, str]) -> None:
@@ -210,8 +255,10 @@ def read_index(url: str = INDEX_URL) -> dict[str, list[str]]:
     return found
 
 
-def gather(gh, index: dict[str, list[str]], ask=upstream.versions) -> tuple[Plan, dict[str, str]]:
+def gather(gh, index: dict[str, list[str]], ask=upstream.versions, ignored: dict | None = None,
+           today: str | None = None) -> tuple[Plan, dict[str, str]]:
     """Ask upstream and GitHub what `make_plan` needs. A kind that cannot be asked is reported."""
+    ignored = ignored or {}
     answers: dict[str, list[str]] = {}
     errors: dict[str, str] = {}
     failures: dict[tuple[str, str], int] = {}
@@ -226,11 +273,13 @@ def gather(gh, index: dict[str, list[str]], ask=upstream.versions) -> tuple[Plan
             continue
         runs = gh.runs(WORKFLOWS[kind][0])
         runs_of[kind] = runs
-        counted = failures_by_title(runs)
         for version in answers[kind]:
+            # A version back from being set aside starts its count again on the day it came back.
+            since = ignored.get((kind, version), {}).get("until", "")
+            counted = failures_by_title(runs, since)
             if title(kind, version) in counted:
                 failures[(kind, version)] = counted[title(kind, version)]
-    plan = make_plan(index, answers, gh.tags(), failures)
+    plan = make_plan(index, answers, gh.tags(), failures, ignored=ignored, today=today)
     for kind, version in plan.trials:
         wanted = title(kind, version) + NO_RELEASE
         for run in runs_of.get(kind, []):  # newest first
@@ -382,7 +431,7 @@ def main(argv: list[str] | None = None) -> int:
 
     gh = Gh()
     started = time.monotonic()
-    plan, errors = gather(gh, read_index())
+    plan, errors = gather(gh, read_index(), ignored=read_ignore())
     shown = {**plan.__dict__, "tried": {" ".join(key): value for key, value in plan.tried.items()}}
     print(json.dumps({**shown, "errors": errors}, indent=2))
     if not args.execute:

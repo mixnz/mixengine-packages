@@ -160,7 +160,11 @@ when there is nothing to say:
 
 - **a build that failed** — it is retried the next day, because it is still missing;
 - **a version that failed three times** — no longer retried. Fix the recipe, then
-  `release/build.sh <kind> <version>` by hand;
+  `release/build.sh <kind> <version>` by hand — or, when the failure is upstream's and nothing
+  here can fix it, set it aside in `data/watch-ignore.json` with a reason and an `until` date. It
+  stops being reported, so the issue can close, and after that date it is built again with its
+  failures counted afresh, in case upstream fixed it. `mysql 8.0.45` is the first: Oracle published
+  its Linux tarballs unsigned;
 - **a new line upstream** — follow "A new line" above; the watcher never adds a line, but it builds
   the line's newest version once **without a release** and says under the line whether every leg
   built and which failed, so you know before you start whether the recipes already handle it;

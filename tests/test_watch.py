@@ -401,5 +401,63 @@ class Trials(unittest.TestCase):
         self.assertNotIn("Built today", body)
 
 
+class Ignored(unittest.TestCase):
+    IGNORE = {("mysql", "8.0.45"): {"reason": "unsigned upstream", "until": "2026-12-30"}}
+
+    def test_an_ignored_version_is_neither_built_nor_reported_before_it_expires(self):
+        plan = watch.make_plan(
+            index={"mysql": ["8.0.44"]}, upstream={"mysql": ["8.0.45"]},
+            tags={}, failures={("mysql", "8.0.45"): 3}, ignored=self.IGNORE, today="2026-10-01",
+        )
+        self.assertEqual((plan.build, plan.skipped), ([], []))
+        self.assertEqual(plan.ignored, [("mysql", "8.0.45", "2026-12-30")])
+        self.assertIsNone(watch.render(plan, {}, {}, None))
+
+    def test_it_is_tried_again_once_it_expires(self):
+        plan = watch.make_plan(
+            index={"mysql": ["8.0.44"]}, upstream={"mysql": ["8.0.45"]},
+            tags={}, failures={}, ignored=self.IGNORE, today="2026-12-30",
+        )
+        self.assertEqual(plan.build, [("mysql", "8.0.45")])
+        self.assertEqual(plan.ignored, [])
+
+    def test_only_failures_after_the_expiry_count(self):
+        runs = [
+            {"displayTitle": "build mysql 8.0.45", "conclusion": "failure", "createdAt": "2026-09-29T10:00:00Z"},
+            {"displayTitle": "build mysql 8.0.45", "conclusion": "failure", "createdAt": "2026-09-30T10:00:00Z"},
+            {"displayTitle": "build mysql 8.0.45", "conclusion": "failure", "createdAt": "2027-01-02T10:00:00Z"},
+        ]
+        self.assertEqual(watch.failures_by_title(runs, since="2026-12-30"), {"build mysql 8.0.45": 1})
+        self.assertEqual(watch.failures_by_title(runs), {"build mysql 8.0.45": 3})
+
+    def test_gather_counts_failures_from_the_expiry_on(self):
+        runs = {"build-mysql.yml": [
+            {"displayTitle": "build mysql 8.0.45", "conclusion": "failure",
+             "createdAt": "2026-09-30T10:00:00Z"}] * 3}
+        plan, _ = watch.gather(FakeGh(runs=runs), {"mysql": ["8.0.44"]},
+                               ask=lambda kind, lines: ["8.0.45"],
+                               ignored=self.IGNORE, today="2027-01-05")
+        self.assertEqual(plan.build, [("mysql", "8.0.45")])
+
+    def test_the_file_must_say_why_and_until_when(self):
+        import json
+        import tempfile
+        directory = Path(tempfile.mkdtemp())
+        good = directory / "good.json"
+        good.write_text(json.dumps({"mysql 8.0.45": {"reason": "unsigned", "until": "2026-12-30"}}))
+        self.assertEqual(watch.read_ignore(good),
+                         {("mysql", "8.0.45"): {"reason": "unsigned", "until": "2026-12-30"}})
+        for broken in ({"mysql 8.0.45": {"until": "2026-12-30"}},
+                       {"mysql 8.0.45": {"reason": "unsigned", "until": "soon"}},
+                       {"mysql": {"reason": "unsigned", "until": "2026-12-30"}}):
+            path = directory / "broken.json"
+            path.write_text(json.dumps(broken))
+            with self.assertRaises(SystemExit):
+                watch.read_ignore(path)
+
+    def test_the_committed_file_is_valid(self):
+        self.assertIn(("mysql", "8.0.45"), watch.read_ignore())
+
+
 if __name__ == "__main__":
     unittest.main()

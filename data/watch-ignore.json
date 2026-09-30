@@ -1,0 +1,11 @@
+{
+  "_comment": [
+    "Versions tools/watch.py has been told to leave alone for a while. Each entry says why and until",
+    "when; once the date passes the version is built again and only failures from that day count.",
+    "Nothing here is permanent on purpose: the reason for setting a version aside can go away."
+  ],
+  "mysql 8.0.45": {
+    "reason": "Oracle published the Linux tarballs without detached signatures, and mysql.py refuses an unverified asset. Retried in case the signatures are added later.",
+    "until": "2026-12-30"
+  }
+}
