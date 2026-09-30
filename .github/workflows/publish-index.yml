@@ -1,9 +1,10 @@
 name: publish index
 
-# The index is regenerated from what the releases actually contain, never from what a build job
+# The index is extended from what the releases actually contain, never from what a build job
 # thought it produced. A release that failed to upload is therefore absent from the index rather
 # than present and broken — which is the failure mode worth designing for, because the index is
-# signed and a client has no way to doubt it afterwards.
+# signed and a client has no way to doubt it afterwards. What the published index already
+# describes is compared by digest rather than downloaded again; see tools/gather.py.
 on:
   workflow_dispatch:
     inputs:
@@ -12,6 +13,11 @@ on:
         required: false
         default: false
         type: boolean
+      recheck:
+        description: "A kind, or 'all': look again at versions the index already describes. Costs time, not disk."
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write
@@ -30,30 +36,28 @@ jobs:
         with: { python-version: '3.12' }
       - run: pip install jsonschema
 
-      - name: collect every published artifact
+      # The published index already describes nearly everything, and GitHub states a sha256 for
+      # every asset, so the listing alone says which versions are new, which gained a cell and
+      # which had their bytes replaced. Only those are downloaded, one version at a time, compared
+      # cell against cell and deleted before the next: the disk this needs is the largest single
+      # version, not the archive. `recheck` is how a change to the comparison itself, or a manifest
+      # corrected by hand, reaches versions that are already described.
+      - name: look at what the published index does not already describe
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RECHECK: ${{ inputs.recheck }}
         run: |
-          set -euo pipefail
-          mkdir -p dist
-          # The manifest is what describes an artifact, so an asset without one is not an artifact
-          # and is skipped rather than guessed about.
-          for tag in $(gh release list --limit 500 --json tagName -q '.[].tagName' | grep -v "^${INDEX_TAG}$"); do
-            gh release download "$tag" --dir dist --pattern '*' --clobber
-          done
-          ls -la dist
-
-      # Before the index is generated rather than after, because a version that fails this is a
-      # version that should not be described to anybody — and this is the only job in the repository
-      # where every cell of every version is on one disk at once, which is the whole reason the
-      # comparison can be made here and nowhere else.
-      - name: compare the cells of each version
-        run: python tools/parity.py --artifacts dist
+          python -u tools/gather.py \
+            --previous "$PUBLISHED" \
+            --base-url "$BASE_URL" \
+            --recheck "$RECHECK" \
+            --out work/found.json
 
       - name: generate
         run: |
           python tools/mkindex.py \
-            --artifacts dist \
+            --found work/found.json \
             --previous "$PUBLISHED" \
             --base-url "$BASE_URL" \
             --out dist/index.json

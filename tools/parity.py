@@ -38,8 +38,10 @@ What this cannot do is notice a feature missing from all six cells at once. That
 siblings have.
 
 Run where every artifact of a version is visible at once, which is ``publish-index.yml`` and nowhere
-else. An empty cell is not a failure — a target upstream never built exits 75 in its own workflow —
-so nothing here asks how many cells a row should have.
+else: `gather.py` downloads one version's cells together, runs this on them, and deletes them. A
+version the published index already describes is not looked at again unless the workflow is asked
+to `recheck` it. An empty cell is not a failure — a target upstream never built exits 75 in its own
+workflow — so nothing here asks how many cells a row should have.
 
 Python 3 stdlib only, and it has to keep running on the 3.12 the index workflow installs: no
 ``tarfile`` zstd, hence ``tar``.
