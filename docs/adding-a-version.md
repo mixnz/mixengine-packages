@@ -71,9 +71,13 @@ python tools/httpd_build.py --version 2.4 --out dist/     # Windows, both archit
 # reads off the borrowed binary. Needs a gpg — nginx signs its releases and hashes none of them
 python tools/nginx.py --version 1.30 --out dist/
 
-# Then regenerate and sign the index from what the releases actually contain
+# Then regenerate and sign the index from what the releases actually contain. Two encodings come
+# out — index.json, and index-v2.json with one index-v2-<kind>.json per kind — and only the first
+# and the root are signed: a kind file is named by its hash in the root
 python tools/mkindex.py --base-url … --out dist/index.json
-minisign -Sm dist/index.json -s "$MINISIGN_KEY"   # the key is not in this tree; see the-archive.md
+python tools/verify.py dist/index.json --catalogue dist
+minisign -Sm dist/index.json -s "$MINISIGN_KEY"      # the key is not in this tree; see the-archive.md
+minisign -Sm dist/index-v2.json -s "$MINISIGN_KEY"
 
 # And, when a publisher moves a support schedule, transcribe it again rather than editing a date
 python tools/eol.py            # compare every written date against its publisher

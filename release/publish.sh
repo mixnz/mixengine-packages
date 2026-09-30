@@ -4,10 +4,10 @@
 #
 #     release/publish.sh
 #
-# This is the step that makes a build installable. `mkindex.py` reads nothing in this repository: it
-# downloads every release asset and reads the manifest beside each archive, so the index it produces
-# describes whatever is published at the moment it runs — including a corrected end-of-life date on
-# a package released months ago.
+# This is the step that makes a build installable. The index is extended from the releases and not
+# from this repository: every version the published index does not already describe is downloaded
+# and its manifests read, so the index describes whatever is published at the moment it runs —
+# and every package is re-dated on every run, including one released months ago.
 #
 # `publish` defaults to false in the workflow, the way `release` does in the builds, so the default
 # here is to actually publish and `--dry` is the way to only generate and verify.
@@ -55,7 +55,8 @@ if [[ "$publish" == true ]]; then
   cat <<EOF
 Done. The signed index is at:
 
-    https://github.com/$repo/releases/download/index/index.json
+    https://github.com/$repo/releases/download/index/index.json       (schema 1)
+    https://github.com/$repo/releases/download/index/index-v2.json    (schema 2, one file per kind beside it)
 
 If you just added a whole new LINE rather than a new patch of an existing one, two
 things are still outstanding — see "A new line" in release/README.md.

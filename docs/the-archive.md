@@ -10,14 +10,21 @@ full, and there are two kinds of them:
 - **Every archive.** `php-8.1.29-linux-x86_64.tar.zst` and its two hundred siblings. One deleted is
   one version that stops installing on one platform, silently, for everybody who pinned it.
 - **Every `<archive>.json` beside it.** These are easy to mistake for debris and they are the input
-  the index is *made from*: `publish-index.yml` does not rebuild the index from anything in this
-  repository, it downloads every release asset and reads the manifest next to each archive. A
-  deleted sidecar leaves the archive perfectly intact and quietly drops that cell out of every index
-  generated afterwards.
+  the index is *made from*: `publish-index.yml` does not build the index from anything in this
+  repository, it reads the manifest next to each archive. It reads one when a version is first
+  indexed, and again whenever that version is rechecked or its bytes change — so a deleted sidecar
+  leaves the archive intact, makes it stop being an artifact in the eyes of the next run that looks,
+  and means the cell can never be described again from scratch. The index keeps what it already
+  said about it; the 2026-08-17 reset is what "from scratch" looks like.
 
-The **`index` tag is the single exception**, and by design: it holds the newest `index.json` and its
-signature, nothing else, and each publish moves it. That is why the URL MixEngine reads never
-changes and why nothing accumulates there.
+The **`index` tag is the single exception**, and by design: it holds the newest documents and their
+signatures, nothing else, and each publish moves it. That is why the URLs MixEngine reads never
+change and why nothing accumulates there. The documents are `index.json`, which is the whole
+catalogue in one file for every client released before schema 2; `index-v2.json`, a signed root
+that names one `index-v2-<kind>.json` per kind by its sha256; and `extensions.json`. One file per
+kind is not accumulation — a kind never leaves, so the count is the number of kinds — and a kind
+file with no signature of its own is not an oversight: it is believed only because the signed root
+names its hash. [The design](superpowers/specs/2026-09-30-index-schema-2-design.md) says why.
 
 **A deletion cannot be undone, which is the part that is easy to get wrong.** The instinct is that a
 lost artifact can be rebuilt from the recipe that made it — and it can, but not to the same bytes.

@@ -1,9 +1,10 @@
 name: publish index
 
-# The index is regenerated from what the releases actually contain, never from what a build job
+# The index is extended from what the releases actually contain, never from what a build job
 # thought it produced. A release that failed to upload is therefore absent from the index rather
 # than present and broken — which is the failure mode worth designing for, because the index is
-# signed and a client has no way to doubt it afterwards.
+# signed and a client has no way to doubt it afterwards. What the published index already
+# describes is compared by digest rather than downloaded again; see tools/gather.py.
 on:
   workflow_dispatch:
     inputs:
@@ -12,6 +13,11 @@ on:
         required: false
         default: false
         type: boolean
+      recheck:
+        description: "A kind, or 'all': look again at versions the index already describes. Costs time, not disk."
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write
@@ -20,6 +26,7 @@ env:
   INDEX_TAG: index
   BASE_URL: https://github.com/${{ github.repository }}/releases/download
   PUBLISHED: https://github.com/${{ github.repository }}/releases/download/index/index.json
+  PUBLISHED_ROOT: https://github.com/${{ github.repository }}/releases/download/index/index-v2.json
 
 jobs:
   index:
@@ -30,39 +37,41 @@ jobs:
         with: { python-version: '3.12' }
       - run: pip install jsonschema
 
-      - name: collect every published artifact
+      # The published index already describes nearly everything, and GitHub states a sha256 for
+      # every asset, so the listing alone says which versions are new, which gained a cell and
+      # which had their bytes replaced. Only those are downloaded, one version at a time, compared
+      # cell against cell and deleted before the next: the disk this needs is the largest single
+      # version, not the archive. `recheck` is how a change to the comparison itself, or a manifest
+      # corrected by hand, reaches versions that are already described.
+      - name: look at what the published index does not already describe
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RECHECK: ${{ inputs.recheck }}
         run: |
-          set -euo pipefail
-          mkdir -p dist
-          # The manifest is what describes an artifact, so an asset without one is not an artifact
-          # and is skipped rather than guessed about.
-          for tag in $(gh release list --limit 500 --json tagName -q '.[].tagName' | grep -v "^${INDEX_TAG}$"); do
-            gh release download "$tag" --dir dist --pattern '*' --clobber
-          done
-          ls -la dist
-
-      # Before the index is generated rather than after, because a version that fails this is a
-      # version that should not be described to anybody — and this is the only job in the repository
-      # where every cell of every version is on one disk at once, which is the whole reason the
-      # comparison can be made here and nowhere else.
-      - name: compare the cells of each version
-        run: python tools/parity.py --artifacts dist
+          python -u tools/gather.py \
+            --previous "$PUBLISHED" \
+            --base-url "$BASE_URL" \
+            --recheck "$RECHECK" \
+            --out work/found.json
 
       - name: generate
         run: |
           python tools/mkindex.py \
-            --artifacts dist \
+            --found work/found.json \
             --previous "$PUBLISHED" \
             --base-url "$BASE_URL" \
             --out dist/index.json
 
+      # One command, and no retry without `--previous`: a document that is not published yet is
+      # told apart from one that could not be read inside verify.py, so a lost version can no
+      # longer pass by failing first.
       - name: verify before signing
         run: |
-          python tools/verify.py dist/index.json --previous "$PUBLISHED" || \
-          python tools/verify.py dist/index.json
-          cat dist/index.json
+          python tools/verify.py dist/index.json \
+            --previous "$PUBLISHED" \
+            --catalogue dist \
+            --previous-root "$PUBLISHED_ROOT"
 
       - name: sign
         if: inputs.publish
@@ -78,11 +87,15 @@ jobs:
           fi
           sudo apt-get update -qq && sudo apt-get install -y -qq minisign
           printf '%s' "$MINISIGN_SECRET_KEY" > minisign.key
-          printf '%s\n' "$MINISIGN_PASSWORD" | minisign -S -m dist/index.json -s minisign.key
+          for document in dist/index.json dist/index-v2.json; do
+            printf '%s\n' "$MINISIGN_PASSWORD" | minisign -S -m "$document" -s minisign.key
+          done
           shred -u minisign.key
-          # Prove the signature against the key in the tree, which is the same key compiled into
+          # Prove the signatures against the key in the tree, which is the same key compiled into
           # MixEngine. Signing with a key nobody can check is worth nothing.
-          minisign -V -m dist/index.json -p minisign.pub
+          for document in dist/index.json dist/index-v2.json; do
+            minisign -V -m "$document" -p minisign.pub
+          done
 
       - name: publish
         if: inputs.publish
@@ -94,8 +107,20 @@ jobs:
             gh release create "$INDEX_TAG" --title "Package index" \
               --notes "The signed index MixEngine reads. Always the newest one; the tag is moved rather than added to, so the URL never changes."
           gh release upload "$INDEX_TAG" dist/index.json dist/index.json.minisig --clobber
+          # Schema 2, in the one order that never shows a client a wrong answer: the kind files
+          # that changed, then the root, then its signature last. A client asks for the signature
+          # first, so until that last upload it sees nothing new; GitHub cannot replace several
+          # assets at once, and what a client can meet in between is a refusal it retries.
+          python tools/catalogue.py --changed dist --against "$PUBLISHED_ROOT" > changed.txt
+          while read -r name; do
+            if [ -n "$name" ]; then
+              gh release upload "$INDEX_TAG" "dist/$name" --clobber
+            fi
+          done < changed.txt
+          gh release upload "$INDEX_TAG" dist/index-v2.json --clobber
+          gh release upload "$INDEX_TAG" dist/index-v2.json.minisig --clobber
 
       - uses: actions/upload-artifact@v4
         with:
           name: index
-          path: dist/index.json*
+          path: dist/index*.json*

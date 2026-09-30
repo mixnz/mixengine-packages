@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mixnz/mixengine-packages/schema/index-v2-kind.schema.json",
+  "title": "MixEngine package index, schema 2: one kind",
+  "description": "Every version of one kind. Unsigned: it is trusted because the signed root names its sha256. It carries no timestamp, so the same packages always give the same bytes.",
+  "type": "object",
+  "required": ["schema", "kind", "shapes", "packages"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": 2 },
+    "kind": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "shapes": {
+      "type": "array",
+      "description": "Everything an artifact says that is not about its bytes — provides, requires, extension_dir, extensions — written once and referred to by position. The fields are schema 1's artifact fields and are checked there: verify.py decodes this file and holds the result to index.schema.json.",
+      "items": { "type": "object", "required": ["provides"] }
+    },
+    "packages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["version", "channel", "artifacts"],
+        "additionalProperties": false,
+        "properties": {
+          "version": { "type": "string" },
+          "channel": { "enum": ["stable", "rc", "beta"] },
+          "eol": { "type": "string", "format": "date" },
+          "artifacts": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["os", "arch", "format", "sha256", "size", "shape"],
+              "additionalProperties": false,
+              "properties": {
+                "os": { "enum": ["windows", "macos", "linux"] },
+                "arch": { "enum": ["x86_64", "aarch64"] },
+                "format": {
+                  "enum": ["zip", "tar.zst", "tar.gz"],
+                  "description": "The one part of an archive's name that cannot be derived."
+                },
+                "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+                "size": { "type": "integer", "minimum": 1 },
+                "shape": { "type": "integer", "minimum": 0 }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
