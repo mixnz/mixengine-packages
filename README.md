@@ -205,11 +205,12 @@ number. Windows on ARM is empty on every line: Oracle has never published one, a
 | **8.0** | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | **8.2** | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | **8.3** | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| **9.0** | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 
 Every cell borrowed, and Windows on ARM is upstream's own absence: no MongoDB has ever been built
 for it, at any version. The floor is 6.0 because that is where a line stops being whole — upstream
 withdrew macOS from 5.0 and 4.4 *while it was still patching them*, so the newest patch of either
-has no macOS build at all. **Twenty-five cells and no shell in any of them:** the server archive
+has no macOS build at all. **Thirty cells and no shell in any of them:** the server archive
 stopped carrying one at 6.0, so the shell is the row below.
 
 ### [mongosh](docs/packages/mongodb.md#the-shell-is-a-different-package)
@@ -217,6 +218,7 @@ stopped carrying one at 6.0, so the shell is the row below.
 | Version | macOS aarch64 | macOS x86_64 | Linux x86_64 | Linux aarch64 | Windows x86_64 | Windows aarch64 |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: |
 | **2.11** | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| **2.12** | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 
 Its own kind rather than a directory inside the server's, because it is its own release train under
 its own licence — **Apache-2.0** against the server's SSPL v1 — and two products under one version

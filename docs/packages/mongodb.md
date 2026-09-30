@@ -18,13 +18,13 @@ MixEngine's gallery uses MongoDB — it is the missing half of a promise the ind
 | macOS aarch64, x86_64 | **6.0 – newest** | **borrowed** — the official `mongodb-macos-<arch>` tarballs |
 | Linux x86_64, aarch64 | **6.0 – newest** | **borrowed** — whichever per-distribution build the recipe measures, see below |
 
-Five lines: 6.0, 7.0, 8.0, 8.2 and 8.3. `mongod` and `mongos`, and nothing else — **there is no
+Six lines: 6.0, 7.0, 8.0, 8.2, 8.3 and 9.0. `mongod` and `mongos`, and nothing else — **there is no
 shell in these archives**, which is the subject of the last section.
 
 ## Why the floor is 6.0, and why it is a constant rather than a query
 
 Upstream's catalogue flags each release `production_release` and `lts_release`, and the design this
-row was written from assumed that pair selected exactly the five lines above. It does not. Measured
+row was written from assumed that pair selected exactly the lines above. It does not. Measured
 against `downloads.mongodb.org`, it selects **seven**: MongoDB calls 5.0 and 4.4 LTS as well, and
 goes on publishing patches for them.
 
@@ -134,7 +134,7 @@ answers only on Linux: a choice that can only be checked on the platform it is m
 nobody reviews.
 
 A name written into the recipe would also have gone stale immediately. `rhel93` has no `aarch64`
-build below 8.2, and `rhel90` exists on 6.0 and 7.0 and not on 8.x:
+build below 8.2, `rhel90` exists on 6.0 and 7.0 and not on 8.x, and 9.0 dropped `ubuntu2004`:
 
 | Line | Candidates upstream actually built (either architecture) |
 | --- | --- |
@@ -142,6 +142,7 @@ build below 8.2, and `rhel90` exists on 6.0 and 7.0 and not on 8.x:
 | 7.0 | `rhel8`, `rhel90`, `rhel10`, `ubuntu2004`, `ubuntu2204` |
 | 8.0, 8.3 | `rhel8`, `rhel93`, `rhel10`, `ubuntu2004`, `ubuntu2204`, `ubuntu2404` |
 | 8.2 | `rhel8`, `rhel93`, `ubuntu2004`, `ubuntu2204`, `ubuntu2404` |
+| 9.0 | `rhel8`, `rhel93`, `rhel10`, `ubuntu2204`, `ubuntu2404` |
 
 **This costs one wasted download per Linux leg** — `rhel8` is fetched, measured, found to want
 OpenSSL 1.1.1 and rejected — and that is the price of the choice being a measurement. If upstream
@@ -173,11 +174,11 @@ Measured off `LC_BUILD_VERSION` in the published artifacts rather than read off 
 
 | Line | macOS aarch64 | macOS x86_64 |
 | --- | :---: | :---: |
-| 8.0, 8.2, 8.3 | **14.0** | **14.0** |
+| 8.0, 8.2, 8.3, 9.0 | **14.0** | **14.0** |
 | 6.0, 7.0 | 11.0 | 10.14 |
 
-**MongoDB 8.x requires macOS 14**, which is a 2023 release. A machine on macOS 13 or older cannot
-run any 8.x artifact here, and 7.0 is the newest line it can. That turns the older lines from a
+**MongoDB 8.x and 9.0 require macOS 14**, which is a 2023 release. A machine on macOS 13 or older
+cannot run any 8.x or 9.0 artifact here, and 7.0 is the newest line it can. That turns the older lines from a
 courtesy into the answer for a specific machine — the same argument PHP 7.0 is offered under, and
 it is worth stating because nothing on the download page says it.
 
