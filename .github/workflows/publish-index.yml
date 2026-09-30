@@ -62,7 +62,6 @@ jobs:
         run: |
           python tools/verify.py dist/index.json --previous "$PUBLISHED" || \
           python tools/verify.py dist/index.json
-          cat dist/index.json
 
       - name: sign
         if: inputs.publish

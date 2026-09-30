@@ -179,6 +179,16 @@ def merge(index: dict, found: list, dates: dict, channel: str) -> dict:
     }
 
 
+def serialise(index: dict) -> bytes:
+    """The index as it is published: one line, no indentation.
+
+    Bytes rather than text, so the file is the same file whichever system wrote it. Indentation was
+    42% of the document and a client that will never be updated downloads all of it every six
+    hours; `python -m json.tool` gives a person the old view back.
+    """
+    return (json.dumps(index, separators=(",", ":")) + "\n").encode("utf-8")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--artifacts", type=Path, default=Path("dist"),
@@ -202,7 +212,7 @@ def main() -> None:
     index = merge(previous, found, dates, args.channel)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(index, indent=2, sort_keys=False) + "\n", encoding="utf-8")
+    args.out.write_bytes(serialise(index))
 
     artifacts = sum(len(p["artifacts"]) for p in index["packages"])
     print(f"added {len(found)} artifact(s)")
