@@ -167,6 +167,14 @@ def mapped(path: Path) -> dict[str, object]:
         e_phentsize, e_phnum = struct.unpack_from(end + "HH", blob, 0x36)
         e_shentsize, e_shnum, e_shstrndx = struct.unpack_from(end + "HHH", blob, 0x3A)
         seen["elf"] = (kind, machine, e_phnum)
+
+        def header(index: int) -> tuple:
+            return struct.unpack_from(end + "IIQQQQ", blob, e_shoff + index * e_shentsize)
+
+        # Where every allocated section begins and ends in the address space, for the one question
+        # asked of a `PT_LOAD` below: how much of what it maps does any section actually own.
+        spans = [(addr, addr + size) for _, _, flags, addr, _, size in map(header, range(e_shnum))
+                 if flags & SHF_ALLOC and size]
         for index in range(e_phnum):
             p_type, p_flags, p_offset, p_vaddr, p_paddr, p_filesz, p_memsz, p_align = \
                 struct.unpack_from(end + "IIQQQQQQ", blob, e_phoff + index * e_phentsize)
@@ -190,11 +198,25 @@ def mapped(path: Path) -> dict[str, object]:
             # that still covers all of them, at the same addresses and sizes, is mapping the same
             # image. The CPython case P4c found is caught here regardless, by `p_filesz` and
             # `p_memsz` — a segment mapping *less* than it did, which no offset arithmetic explains.
+            #
+            # **A `PT_LOAD`'s sizes are counted up to the last section inside it, when what lies
+            # past that is zeros**, which is issue #10. python-build-standalone 20261003 ships a
+            # Linux interpreter whose last `PT_LOAD` — the one patchelf appends for `.dynamic`,
+            # `.dynstr`, `.gnu.hash`, `.interp` and the notes — runs four zero bytes past the end of
+            # `.note.gnu.build-id`, and `strip --strip-all` trims the segment to its sections. That
+            # is padding no section owns going out of the image, and it refused all five Python
+            # lines on both Linux cells. A tail that is not zeros is left counted, so a segment that
+            # lost bytes somebody wrote is still a difference; and a segment that shrank *into* a
+            # section still is too, because the trimmed size can never fall below a section's end.
+            inside = [stop for start, stop in spans
+                      if p_vaddr <= start < p_vaddr + max(p_memsz, 1)]
+            if p_type == PT_LOAD and inside:
+                covered = min(max(inside) - p_vaddr, p_memsz)
+                tail = blob[p_offset + min(covered, p_filesz):p_offset + p_filesz]
+                if not tail.strip(b"\0"):
+                    p_filesz, p_memsz = min(p_filesz, covered), covered
             seen[f"segment {index}"] = (p_type, p_flags, p_vaddr, p_paddr, p_filesz, p_memsz,
                                         p_align)
-
-        def header(index: int) -> tuple:
-            return struct.unpack_from(end + "IIQQQQ", blob, e_shoff + index * e_shentsize)
 
         names_at = header(e_shstrndx)[4]
         for index in range(e_shnum):
