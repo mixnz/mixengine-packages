@@ -222,6 +222,7 @@ stopped carrying one at 6.0, so the shell is the row below.
 | --- | :---: | :---: | :---: | :---: | :---: | :---: |
 | **2.11** | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | **2.12** | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| **2.13** | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 
 Its own kind rather than a directory inside the server's, because it is its own release train under
 its own licence — **Apache-2.0** against the server's SSPL v1 — and two products under one version
