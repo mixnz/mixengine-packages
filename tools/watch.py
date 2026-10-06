@@ -28,7 +28,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import upstream  # noqa: E402  — siblings, and this directory is not importable as a package
+import eol  # noqa: E402  — siblings, and this directory is not importable as a package
+import upstream  # noqa: E402
 
 # Packed on demand and never back-filled, by its own design.
 EXCLUDED = frozenset({"meilisearch"})
@@ -362,6 +363,20 @@ def _link(run_id: int | None) -> str:
     return f"https://github.com/{REPO}/actions/runs/{run_id}" if run_id else "—"
 
 
+def adding(kind: str, line: str, version: str) -> list[str]:
+    """The steps that add a new line whose trial passed, as release/README.md's "A new line" says.
+
+    The exact version and not the line, for the reason in this file's docstring. The end-of-life
+    steps only for the kinds tools/eol.py transcribes; the others carry no date at all."""
+    steps = [f"`release/build.sh {kind} {version}`", "`release/publish.sh`"]
+    if kind in eol.SOURCES:
+        steps += [f"`python tools/eol.py --update --kind {kind}`, then commit `data/eol.json`",
+                  "`release/publish.sh` again, so the index carries the date"]
+    steps.append(f"Add a **{line}** row to the {kind} table in README.md — ✅ for each artifact the "
+                 "release carries, — for the rest, with the reason in docs/packages/")
+    return [f"To add {kind} {line}:", ""] + [f"{n}. {step}" for n, step in enumerate(steps, 1)]
+
+
 def render(plan: Plan, errors: dict[str, str], results: dict, published: str | None,
            trials: dict | None = None, failed_legs: dict | None = None) -> str | None:
     """The issue body, or None when there is nothing a person needs to know.
@@ -378,16 +393,24 @@ def render(plan: Plan, errors: dict[str, str], results: dict, published: str | N
         out += [f"| {kind} {version} | {outcome} | {_link(run_id)} |"
                 for (kind, version), (outcome, run_id) in built.items()]
         out += ["", f"Index publish: **{published or 'not run'}**", ""]
+        if trouble:
+            out += ["Nothing to do for a version that did not succeed today: it is built again "
+                    "tomorrow, and moves to \"Needs a person\" after three failed release runs.", ""]
     if plan.skipped:
         out += ["## Needs a person — no longer retried", ""]
-        out += [f"- {kind} {version}: {count} failed release runs"
+        out += [f"- {kind} {version}: {count} failed release runs — once the recipe is fixed, "
+                f"`release/build.sh {kind} {version}` then `release/publish.sh`"
                 for kind, version, count in plan.skipped]
-        out += ["", "Fix the recipe, then `release/build.sh <kind> <version>` by hand.", ""]
+        kind, version, _ = plan.skipped[0]
+        out += ["", "If upstream is at fault and may fix it later, set the version aside in "
+                "`data/watch-ignore.json` instead:", "", "```json",
+                f'"{kind} {version}": {{"reason": "<why>", "until": "<YYYY-MM-DD>"}}', "```", ""]
     if plan.new_lines:
         out += ["## New lines upstream — follow \"A new line\" in release/README.md", "",
                 "Each is built once at its newest version without a release, to show whether the "
                 "recipes already handle it. Adding the line is still a person's decision.", ""]
         trial_of = {(kind, line_of(kind, version)): (kind, version) for kind, version in plan.trials}
+        steps: list[str] = []
         for kind, line in plan.new_lines:
             trial = trial_of.get((kind, line))
             if trial is None:
@@ -398,11 +421,19 @@ def render(plan: Plan, errors: dict[str, str], results: dict, published: str | N
             if failed_legs.get(trial):
                 said += f" in {', '.join(failed_legs[trial])}"
             out.append(said + (f" ({_link(run_id)})" if run_id else ""))
-        out += [""]
+            if outcome == "success":
+                steps += [""] + adding(kind, line, trial[1])
+            elif outcome == "failure":
+                steps += ["", f"To try {kind} {line} again once the recipe is fixed: "
+                              f"`release/build.sh {kind} {trial[1]} --no-release`, and add the "
+                              "line only after it passes."]
+        out += steps + [""]
     if errors:
         out += ["## Could not ask upstream", ""]
-        out += [f"- {kind}: {error}" for kind, error in sorted(errors.items())]
-        out += [""]
+        out += [f"- {kind}: {error} — `python tools/upstream.py {kind}` asks the same by hand"
+                for kind, error in sorted(errors.items())]
+        out += ["", "Usually a publisher that did not answer in time; it is asked again tomorrow.",
+                ""]
     return "\n".join(out)
 
 

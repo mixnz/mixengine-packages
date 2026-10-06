@@ -400,6 +400,40 @@ class Trials(unittest.TestCase):
         self.assertIn("actions/runs/31", node_line)
         self.assertNotIn("Built today", body)
 
+    def test_a_passed_trial_comes_with_the_steps_to_add_its_line(self):
+        plan = watch.Plan(new_lines=[("mongosh", "2.13")], trials=[("mongosh", "2.13.0")])
+        body = watch.render(plan, {}, {}, None, trials={("mongosh", "2.13.0"): ("success", 7)})
+        self.assertIn("1. `release/build.sh mongosh 2.13.0`", body)
+        self.assertIn("2. `release/publish.sh`", body)
+        self.assertIn("Add a **2.13** row to the mongosh table in README.md", body)
+        self.assertNotIn("eol.py", body)  # mongosh carries no end-of-life date
+
+    def test_a_kind_with_an_end_of_life_date_is_told_to_transcribe_it(self):
+        plan = watch.Plan(new_lines=[("php", "8.6")], trials=[("php", "8.6.2")])
+        body = watch.render(plan, {}, {}, None, trials={("php", "8.6.2"): ("success", 7)})
+        self.assertIn("`python tools/eol.py --update --kind php`", body)
+        self.assertIn("4. `release/publish.sh` again", body)
+
+    def test_a_failed_trial_is_told_how_to_try_again_without_a_release(self):
+        plan = watch.Plan(new_lines=[("node", "26")], trials=[("node", "26.10.0")])
+        body = watch.render(plan, {}, {}, None, trials={("node", "26.10.0"): ("failure", 7)})
+        self.assertIn("`release/build.sh node 26.10.0 --no-release`", body)
+        self.assertNotIn("To add node 26", body)
+
+    def test_a_skipped_version_names_its_command_and_how_to_set_it_aside(self):
+        body = watch.render(watch.Plan(skipped=[("mysql", "8.0.45", 3)]), {}, {}, None)
+        self.assertIn("`release/build.sh mysql 8.0.45`", body)
+        self.assertIn('"mysql 8.0.45": {"reason"', body)
+        self.assertIn("data/watch-ignore.json", body)
+
+    def test_a_failed_build_today_says_it_is_retried(self):
+        plan = watch.Plan(build=[("php", "8.4.26")])
+        body = watch.render(plan, {}, {("php", "8.4.26"): ("failure", 3)}, None)
+        self.assertIn("built again tomorrow", body)
+        quiet = watch.render(plan, {"ruby": "timed out"}, {("php", "8.4.26"): ("success", 3)}, "success")
+        self.assertNotIn("built again tomorrow", quiet)
+        self.assertIn("`python tools/upstream.py ruby`", quiet)
+
 
 class Ignored(unittest.TestCase):
     IGNORE = {("mysql", "8.0.45"): {"reason": "unsigned upstream", "until": "2026-12-30"}}
