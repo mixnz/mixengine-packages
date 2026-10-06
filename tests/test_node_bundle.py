@@ -1,3 +1,5 @@
+import contextlib
+import io
 import sys
 import tempfile
 import unittest
@@ -39,7 +41,9 @@ class BundleForeign(unittest.TestCase):
                                   return_value={"libatomic.so.1": origin}) as bundle, \
                 mock.patch.object(node.relocate, "bundled_licences") as licences:
             changed = {"bin/node": "stripped"}
-            added = node.bundle_foreign(self.tree, changed)
+            with contextlib.redirect_stdout(io.StringIO()) as said:
+                added = node.bundle_foreign(self.tree, changed)
+        self.assertIn("bundled libatomic.so.1", said.getvalue())
         bundle.assert_called_once()
         licences.assert_called_once_with(self.tree, {"libatomic.so.1": origin})
         self.assertEqual(added, ["lib/libatomic.so.1"])

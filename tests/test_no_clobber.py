@@ -1,3 +1,5 @@
+import contextlib
+import io
 import json
 import sys
 import tempfile
@@ -53,8 +55,13 @@ class Main(unittest.TestCase):
     def test_refuses_without_replace_and_allows_with_it(self):
         directory = incoming(("ruby", "3.4.10", "windows-x86_64"))
         taken = lambda tag: {"ruby-3.4.10-windows-x86_64.tar.zst"}  # noqa: E731
-        self.assertEqual(no_clobber.main([str(directory)], existing=taken), 1)
-        self.assertEqual(no_clobber.main([str(directory), "--replace"], existing=taken), 0)
+        # Captured, or the runner reads the ::error:: line as a workflow command and annotates it.
+        with contextlib.redirect_stdout(io.StringIO()) as refused:
+            self.assertEqual(no_clobber.main([str(directory)], existing=taken), 1)
+        self.assertIn("::error::ruby-3.4.10 already has", refused.getvalue())
+        with contextlib.redirect_stdout(io.StringIO()) as replaced:
+            self.assertEqual(no_clobber.main([str(directory), "--replace"], existing=taken), 0)
+        self.assertIn("::warning::ruby-3.4.10 already has", replaced.getvalue())
 
     def test_nothing_taken_passes(self):
         directory = incoming(("ruby", "3.4.11", "windows-x86_64"))

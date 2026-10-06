@@ -1,3 +1,5 @@
+import contextlib
+import io
 import sys
 import tempfile
 import unittest
@@ -20,10 +22,12 @@ class FirstLoadable(unittest.TestCase):
 
     def test_a_release_built_against_a_newer_patch_is_passed_over(self):
         builds = {"2.5.3": NEW, "2.5.2": OLD}
-        found = php_windows.first_loadable(
-            [("2.5.3", "u3"), ("2.5.2", "u2")], lambda release, url: builds[release], self.tree
-        )
+        with contextlib.redirect_stdout(io.StringIO()) as said:
+            found = php_windows.first_loadable(
+                [("2.5.3", "u3"), ("2.5.2", "u2")], lambda release, url: builds[release], self.tree
+            )
         self.assertEqual(found[:2], ("2.5.2", "u2"))
+        self.assertIn("passing over u3", said.getvalue())
 
     def test_the_newest_is_taken_when_it_fits(self):
         found = php_windows.first_loadable(
@@ -32,9 +36,10 @@ class FirstLoadable(unittest.TestCase):
         self.assertEqual(found[0], "2.5.3")
 
     def test_none_when_nothing_fits(self):
-        found = php_windows.first_loadable(
-            [("2.5.3", "u3")], lambda release, url: NEW, self.tree
-        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            found = php_windows.first_loadable(
+                [("2.5.3", "u3")], lambda release, url: NEW, self.tree
+            )
         self.assertIsNone(found)
 
     def test_older_releases_are_not_fetched_once_one_fits(self):
