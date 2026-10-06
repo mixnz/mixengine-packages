@@ -8,7 +8,7 @@
 # workflow's `release` input defaults to **false** — a run without it builds everything, uploads the
 # artifacts for inspection and publishes nothing installable. And the input is not called the same
 # thing on every workflow: php takes `branch`, mariadb, mysql and postgres take a comma-separated
-# `versions`, the other twelve take `version`.
+# `versions`, the other fifteen take `version`.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -22,6 +22,7 @@ source "$here/_dispatch.sh"
 kinds() {
   cat <<'EOF'
 php|build-php.yml|branch||8.4|a branch (8.4) or an exact version (8.4.24). NOT "latest".
+composer|build-composer.yml|version||2|a line (2 or 2.2), an exact version (2.10.3), or "latest". 2.x only.
 node|build-node.yml|version||22|a line (22), an exact version (22.23.2), or "lts".
 python|build-python.yml|version||3.14|a line (3.14), an exact version (3.14.7), or "latest".
 ruby|build-ruby.yml|version||3.4|a line (3.4), an exact version (3.4.10), or "latest".
@@ -34,6 +35,8 @@ httpd|build-httpd.yml|version||2.4|a line (2.4), an exact version (2.4.68), or "
 redis|build-redis.yml|version||8.10|a line (8.10), an exact version (8.10.0), or "latest".
 valkey|build-valkey.yml|version||9.1|a line (9.1), an exact version (9.1.2), or "latest". 7.2 upwards.
 memcached|build-memcached.yml|version||1.6|a line (1.6), an exact version (1.6.45), or "latest".
+mongodb|build-mongodb.yml|version||8.0|a line (6.0, 7.0, 8.0, 8.2, 8.3), an exact version (8.3.11), or "latest".
+mongosh|build-mongosh.yml|version||2|a line (2 or 2.13), an exact version (2.13.0), or "latest".
 mariadb|build-mariadb.yml|versions|all||A LIST: "all" (the default), "latest", or "11.8,10.11".
 mysql|build-mysql.yml|versions|all||A LIST: "all" (the default) or "5.6,8.4". NOT "latest".
 postgres|build-postgres.yml|versions|all||A LIST: "all" (the default), "latest", or "18,16.10".
