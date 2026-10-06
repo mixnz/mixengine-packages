@@ -176,7 +176,16 @@ when there is nothing to say:
   built and which failed, so you know before you start whether the recipes already handle it;
 - **an upstream it could not ask** — the other kinds went ahead without it.
 
-To see what it would do without doing it, dispatch it by hand with `dry` left on, or locally:
+To run it now rather than tomorrow morning — after a fix, or to close an issue that no longer has
+anything to say — use the script. The workflow's own `dry` input defaults to on, so a dispatch from
+the web page only prints the plan and leaves the issue as it was; the script defaults to the real run:
+
+```bash
+release/watch.sh          # build, publish, write or close the issue — what the schedule does
+release/watch.sh --dry    # print the plan only
+```
+
+Or, without dispatching anything at all:
 
 ```bash
 GH_REPO=mixnz/mixengine-packages python tools/watch.py
