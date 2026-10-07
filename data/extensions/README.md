@@ -28,6 +28,12 @@ unknown keys, so it lists Mailpit as an entry it cannot read until it is updated
 which is why a new key in a manifest here waits for the MixEngine `master` that
 reads it, and `publish-extensions` is dispatched at that commit.
 
+**SeaweedFS is a local S3** (MixEngine's tasks T201 and T201a): `weed server -s3`
+on eight ports, every one passed with its own flag, so nothing listens on a port
+MixEngine did not allocate. It needs no new key in the format, so every MixEngine
+that reads Mailpit's `[ui]` reads it too. Its flags were measured on 4.48 on all
+three systems, and the comments in the file say what each one is for.
+
 **MixDB, the fourth, is withdrawn.** It arrived with MixEngine's task T84 as a
 `desktop-app` entry: an application MixEngine *finds* on the machine and hands a
 connection to, naming no artifact. MixDB then became MixEngine's own window, MixLab
