@@ -22,6 +22,12 @@ phpMyAdmin `5.2.3` and Adminer `6.0.1`. Each names an upstream artifact by URL,
 SHA-256 and size — none of these files is a mirror, and this repository publishes
 none of their bytes.
 
+**Mailpit names its page with `[ui]`** (MixEngine's tasks T200a and T200c): the
+`[ports]` key a person opens in a browser. A MixEngine from before T200a refuses
+unknown keys, so it lists Mailpit as an entry it cannot read until it is updated —
+which is why a new key in a manifest here waits for the MixEngine `master` that
+reads it, and `publish-extensions` is dispatched at that commit.
+
 **MixDB, the fourth, is withdrawn.** It arrived with MixEngine's task T84 as a
 `desktop-app` entry: an application MixEngine *finds* on the machine and hands a
 connection to, naming no artifact. MixDB then became MixEngine's own window, MixLab
