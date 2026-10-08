@@ -22,7 +22,7 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: 'The mixnz/mixengine ref to build the generator from.'
+        description: 'The mixnz/mixlab ref to build the generator from.'
         required: false
         default: master
         type: string
@@ -46,7 +46,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with:
-          repository: mixnz/mixengine
+          repository: mixnz/mixlab
           ref: ${{ inputs.ref }}
           path: mixengine
 
@@ -149,7 +149,7 @@ jobs:
           set -euo pipefail
           gh release edit "$INDEX_TAG" --notes "The signed documents MixEngine reads. Always the newest ones; the tag is moved rather than added to, so the URLs never change.
 
-          \`extensions.json\` was cut from mixnz/mixengine-packages@${PACKAGES_SHA}, with a generator built from mixnz/mixengine@${MIXENGINE_SHA}."
+          \`extensions.json\` was cut from mixnz/mixengine-packages@${PACKAGES_SHA}, with a generator built from mixnz/mixlab@${MIXENGINE_SHA}."
 
       - uses: actions/upload-artifact@v4
         with:

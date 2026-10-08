@@ -36,7 +36,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with:
-          repository: mixnz/mixengine
+          repository: mixnz/mixlab
           ref: master
           path: mixengine
 

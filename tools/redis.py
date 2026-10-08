@@ -21,7 +21,7 @@ that is depends on the line rather than on this recipe: one, ``cygwin1.dll``, fo
 
 The alternatives are still no, and for the reasons P8 gave. **Valkey** is the same POSIX program
 forked and sends a Windows user to WSL, which
-[ADR 0003](https://github.com/mixnz/mixengine/blob/master/.claude/decisions/0003-no-container-isolation.md)
+[ADR 0003](https://github.com/mixnz/mixlab/blob/master/docs/decisions/0003-no-container-isolation.md)
 excludes. **Memurai** is proprietary; a repository that redistributes what it packs cannot pack one.
 **The community rebuilds** are a fork nobody maintains — and the point of compiling here is that
 their *method* can be borrowed without their binaries: the tarball is upstream's, checked against

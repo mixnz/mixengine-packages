@@ -33,7 +33,7 @@ release/publish-blueprints.sh --dry        # read the gallery and check the key 
 
 MixEngine ships its six blueprints inside the binary, so this is not how anybody gets one. It is how
 a blueprint an installed build does *not* carry reaches it, and how a downloaded file lands
-**trusted** instead of untrusted for good. The manifests are read out of a `mixnz/mixengine`
+**trusted** instead of untrusted for good. The manifests are read out of a `mixnz/mixlab`
 checkout the workflow makes; nothing about the gallery is kept here except the key that vouches for
 it.
 
@@ -59,7 +59,7 @@ to the `index` tag beside `index.json`, in its own workflow rather than as a job
 has no business stopping the registry.
 
 Unlike the gallery, **the manifests are this repository's**: nothing about an extension is compiled
-into MixEngine. What comes from a `mixnz/mixengine` checkout is the reader that judges a manifest and
+into MixEngine. What comes from a `mixnz/mixlab` checkout is the reader that judges a manifest and
 the constant that says which key an installed copy checks against — so a run refuses exactly what a
 machine would refuse, and **fails before it signs anything** when `minisign.pub` is no longer that
 constant.

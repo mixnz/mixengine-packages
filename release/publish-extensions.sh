@@ -30,7 +30,7 @@ while [[ $# -gt 0 ]]; do
 Publish the signed extension registry.
 
     release/publish-extensions.sh              # generator from mixengine master
-    release/publish-extensions.sh --ref TAG    # from another ref of mixnz/mixengine
+    release/publish-extensions.sh --ref TAG    # from another ref of mixnz/mixlab
     release/publish-extensions.sh --dry        # generate and check the key only
 
 The roster is data/extensions/<id>.toml in this repository. The generator is built

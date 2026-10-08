@@ -11,7 +11,7 @@ it declares, and the generator refuses the run otherwise. That is also what make
 a repeated id impossible: a directory holds one `mailpit.toml`.
 
 **Nothing here is validated by this repository.** The generator is built out of a
-`mixnz/mixengine` checkout and uses that build's own reader, so what a run refuses
+`mixnz/mixlab` checkout and uses that build's own reader, so what a run refuses
 is exactly what an installed MixEngine would refuse — there is no second set of
 rules here to drift from it. The same build holds the key constant, so a
 `minisign.pub` that is no longer the one MixEngine checks against fails the run
@@ -47,7 +47,7 @@ means a new `url`, a new `sha256` and a new `size`, and for phpMyAdmin also
 `[web-app].root`, which is the directory its archive unpacks to — the version is
 in the name. Adminer's generated `index.php` includes its artifact by file name
 for the same reason, so both halves move together. The manifests in
-`mixnz/mixengine`'s `crates/mixengine-testkit/fixtures/extensions/` are the same
+`mixnz/mixlab`'s `crates/mixengine-testkit/fixtures/extensions/` are the same
 files, and a change here belongs in both.
 
 Adding or raising one is a file here and a run of

@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: 'The mixnz/mixengine ref to cut the gallery from.'
+        description: 'The mixnz/mixlab ref to cut the gallery from.'
         required: false
         default: master
         type: string
@@ -37,7 +37,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with:
-          repository: mixnz/mixengine
+          repository: mixnz/mixlab
           ref: ${{ inputs.ref }}
           path: mixengine
       - uses: actions/setup-python@v5
@@ -103,7 +103,7 @@ jobs:
             gh release create "$BLUEPRINT_TAG" --title "Blueprint gallery" \
               --notes "The gallery as signed files."
           gh release upload "$BLUEPRINT_TAG" dist/*.toml dist/*.minisig --clobber
-          gh release edit "$BLUEPRINT_TAG" --notes "The gallery as signed files, cut from mixnz/mixengine@${MIXENGINE_SHA}.
+          gh release edit "$BLUEPRINT_TAG" --notes "The gallery as signed files, cut from mixnz/mixlab@${MIXENGINE_SHA}.
 
           Import one with \`mix blueprint import <file>\` — the \`.minisig\` beside it is what makes it land trusted. A slug this home already holds needs \`--overwrite\`.
 

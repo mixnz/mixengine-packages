@@ -6,7 +6,7 @@
 #     release/publish-blueprints.sh --ref v0.2.0    # from a tag
 #     release/publish-blueprints.sh --dry           # read and check, sign nothing
 #
-# The manifests are read out of a mixnz/mixengine checkout the workflow makes, never out of this
+# The manifests are read out of a mixnz/mixlab checkout the workflow makes, never out of this
 # repository: there is one gallery and it lives over there. What this repository owns is the key
 # that vouches for it — and the run proves that key is the one MixEngine compiles in before it signs
 # a single file.
@@ -30,10 +30,10 @@ while [[ $# -gt 0 ]]; do
 Publish the blueprint gallery as signed files.
 
     release/publish-blueprints.sh              # sign and publish, from mixengine master
-    release/publish-blueprints.sh --ref TAG    # from another ref of mixnz/mixengine
+    release/publish-blueprints.sh --ref TAG    # from another ref of mixnz/mixlab
     release/publish-blueprints.sh --dry        # read the gallery and check the key only
 
-The six manifests are compiled into MixEngine and trusted there without a signature.
+The gallery manifests are compiled into MixEngine and trusted there without a signature.
 These files are the other channel: one downloaded by hand lands trusted because of the
 `.minisig` beside it.
 EOF
@@ -69,7 +69,7 @@ A downloaded pair imports trusted, with no flag naming either:
 
     mix blueprint import laravel.toml --overwrite
 
-\`--overwrite\` only because every home already holds the built-in six.
+\`--overwrite\` only because every home already holds the built-in gallery.
 EOF
 else
   echo "Done (--dry: the gallery was read and the key checked, nothing was signed)."

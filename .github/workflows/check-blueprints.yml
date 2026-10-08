@@ -50,7 +50,7 @@ jobs:
       # and a gallery edit that was reverted a minute later is correctly green here.
       - uses: actions/checkout@v4
         with:
-          repository: mixnz/mixengine
+          repository: mixnz/mixlab
           ref: master
           path: mixengine
       - uses: actions/setup-python@v5
@@ -66,11 +66,11 @@ jobs:
         run: |
           set -euo pipefail
           {
-            echo "Asked for by mixnz/mixengine@${ASKING_SHA:-unknown}"
+            echo "Asked for by mixnz/mixlab@${ASKING_SHA:-unknown}"
             # `if` and not `[ ... ] && echo`: under `set -e` a false test is a failed statement, and
             # the step would die on the one branch where there is simply nothing to print.
             if [ -n "${COMPARE:-}" ]; then echo "  ${COMPARE}"; fi
-            echo "Compared against mixnz/mixengine@$(git -C mixengine rev-parse HEAD) (master now)."
+            echo "Compared against mixnz/mixlab@$(git -C mixengine rev-parse HEAD) (master now)."
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: compare what is published with mixengine master

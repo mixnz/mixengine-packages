@@ -155,7 +155,7 @@ index key does — and for a sharper reason: a MixEngine that trusted a key it c
 would be a MixEngine that runs commands somebody else vouched for.
 
 **What signs with it, and from where.** `.github/workflows/publish-blueprints.yml` is the only thing
-that does — MixEngine's task T79a. It checks out `mixnz/mixengine` at a ref, reads the six manifests
+that does — MixEngine's task T79a. It checks out `mixnz/mixlab` at a ref, reads the gallery manifests
 out of the gallery in that checkout, signs each one, `shred -u`s the key, and verifies every
 signature against the committed `blueprints.pub`. **The manifests are never copied into this
 repository**: there is one gallery and it lives over there, so what is published here cannot drift
