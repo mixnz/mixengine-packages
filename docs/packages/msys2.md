@@ -58,5 +58,10 @@ lists and removes but never runs.
 | | x86_64 | aarch64 |
 | --- | --- | --- |
 | Base downloaded | 43.1 MB (`.sfx.exe`) | the same base |
-| Artifact | **300.3 MB** `.tar.zst` (2026.10.08) | measured on the first ARM run |
+| Artifact | 300.3 MB as `.tar.zst` measured locally; published as `.zip` (see below) | 479.4 MB as `.tar.zst` on the first ARM run |
 | Smoke test | `gcc.exe hello.c -> hello`, from a moved directory whose path holds a space | `clang.exe hello.c -> hello` |
+
+**Published as a zip**, as every Windows cell in this repository is. The first CI run packed the
+ARM64 tree with `tar --zstd` in 39 seconds and then watched the same command on `windows-2022` hang
+for its whole thirty-minute timeout; `zipfile` depends on no program a runner image may or may not
+carry.

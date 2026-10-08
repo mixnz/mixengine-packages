@@ -177,9 +177,11 @@ def main() -> None:
         }
         manifest = borrow.declare(tree, manifest)
         manifest["smoke"] = smoke(tree, target)
-        # "tar", as `ruby_unix.py` passes: `.tar.zst` where the runner's tar has zstd, `.tar.gz`
-        # where it does not. MixEngine unpacks both on every system.
-        borrow.publish(tree, manifest, args.out, "tar")
+        # **A zip, as every Windows cell here is** (`ruby.py`, `mongosh.py`). `tar --zstd` on the
+        # `windows-2022` runner hung for its whole thirty minutes on this tree on 2026-10-08 while
+        # the ARM runner packed it in 39 seconds; `zipfile` needs no program the image may or may
+        # not carry, and MixEngine unpacks a zip on every system.
+        borrow.publish(tree, manifest, args.out, "zip")
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
