@@ -154,6 +154,16 @@ One file for every cell — `composer.phar`, run by whichever PHP MixEngine reso
 times because the index has no cell for a file that runs everywhere; the page says why that is
 cheaper than a schema change.
 
+### [MSYS2](docs/packages/msys2.md)
+
+| Version | macOS aarch64 | macOS x86_64 | Linux x86_64 | Linux aarch64 | Windows x86_64 | Windows aarch64 |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **2026.10.08** | — | — | — | — | ✅ | ✅ |
+
+The compiler a Windows Ruby lacks: MSYS2 with the toolchain `ridk install 3` would add, UCRT gcc on
+x86_64 and clang on ARM64, built here and versioned by its build date. MixEngine installs it as a
+toolchain and points every Ruby at it through `MSYS2_PATH`; Windows only, as RubyInstaller is.
+
 ### [Caddy](docs/packages/caddy.md)
 
 | Version | macOS aarch64 | macOS x86_64 | Linux x86_64 | Linux aarch64 | Windows x86_64 | Windows aarch64 |
