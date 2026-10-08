@@ -76,12 +76,19 @@ jobs:
       - name: zip the starters
         run: |
           set -euo pipefail
+          mkdir -p dist/starter-files
           if [ -d "$STARTERS" ]; then
             for dir in "$STARTERS"/*/; do
               name="$(basename "$dir")"
               (cd "$STARTERS" && zip -qrX "$GITHUB_WORKSPACE/dist/$name-starter.zip" "$name")
             done
+            # A file directly under starters/ is published as itself: `rails new -m` takes a URL
+            # to one Ruby file, not an archive (mixlab T205a).
+            for file in "$STARTERS"/*; do
+              if [ -f "$file" ]; then cp "$file" dist/starter-files/; fi
+            done
           fi
+          ls -la dist/starter-files
           ls -la dist
 
       - name: sign
@@ -119,7 +126,7 @@ jobs:
             gh release create "$BLUEPRINT_TAG" --title "Blueprint gallery" \
               --notes "The gallery as signed files."
           shopt -s nullglob
-          gh release upload "$BLUEPRINT_TAG" dist/*.toml dist/*.minisig dist/*-starter.zip --clobber
+          gh release upload "$BLUEPRINT_TAG" dist/*.toml dist/*.minisig dist/*-starter.zip dist/starter-files/* --clobber
           gh release edit "$BLUEPRINT_TAG" --notes "The gallery as signed files, cut from mixnz/mixlab@${MIXENGINE_SHA}.
 
           Import one with \`mix blueprint import <file>\` — the \`.minisig\` beside it is what makes it land trusted. A slug this home already holds needs \`--overwrite\`.
@@ -138,7 +145,7 @@ jobs:
           # The starters are the gallery's too: without them here this step deletes what the step
           # above has just uploaded.
           shopt -s nullglob
-          (cd dist && ls -1 ./*.toml ./*.minisig ./*-starter.zip | sed 's|^\./||') | sort > expected.txt
+          (cd dist && { ls -1 ./*.toml ./*.minisig ./*-starter.zip; ls -1 starter-files; } | sed 's|^\./||') | sort > expected.txt
           gh release view "$BLUEPRINT_TAG" --json assets -q '.assets[].name' | sort > published.txt
           comm -13 expected.txt published.txt > orphans.txt
           while read -r orphan; do
@@ -162,7 +169,7 @@ jobs:
             cmp "$file" "dist/$(basename "$file")"
           done
           shopt -s nullglob
-          for file in dist/*-starter.zip; do
+          for file in dist/*-starter.zip dist/starter-files/*; do
             cmp "$file" "downloaded/$(basename "$file")"
           done
 
