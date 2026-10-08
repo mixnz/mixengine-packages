@@ -42,6 +42,12 @@ that warns, and a blueprint asking for a native gem can fail where it is written
 somebody's machine. It is the only field here that is an admission, and an absence nothing states is
 an absence a reader has to discover.
 
+**The compiler half has an answer now, beside the artifact rather than inside it.** The
+[`msys2`](msys2.md) package is MSYS2 with the toolchain `ridk install 3` would add, built here for
+both Windows cells; MixEngine installs it into its home and points every Ruby at it through
+`MSYS2_PATH`. The Ruby artifact's `lacks` stays as it is, because the Ruby still ships no compiler,
+and since T206 the index carries `lacks` to MixEngine, which says so where a Ruby is chosen.
+
 **A second asymmetry was written down and then measured, and it was not there.**
 `RbConfig::CONFIG['ENABLE_SHARED']` is `yes` on the two borrowed cells and `no` on the four compiled
 ones, which reads as *two cells can be embedded in a program and four cannot* — the question P4a

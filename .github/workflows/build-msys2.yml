@@ -1,0 +1,112 @@
+name: build msys2
+run-name: build msys2 ${{ inputs.version }}${{ !inputs.release && ' (no release)' || '' }}
+
+# Asked for, never automatic — the same rule every other workflow here keeps.
+#
+# **A toolchain for Ruby on Windows, not a program anybody runs.** RubyInstaller's Ruby carries no
+# compiler, so `gem install` of a gem with a C extension fails with "MSYS2 could not be found" (see
+# docs/packages/ruby.md and docs/packages/msys2.md). MixEngine installs this package into its home
+# and points every Ruby at it through MSYS2_PATH.
+#
+# **Two legs, both Windows.** The ARM64 leg runs on an ARM runner because its smoke test compiles
+# and runs C with clang for aarch64; the x86_64 MSYS2 base under it runs emulated, by design.
+#
+# **The version is the build date.** `version` exists so `release/build.sh` can dispatch this like
+# any other kind; the recipe accepts only `latest`.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Always 'latest': the version is the date of the build."
+        required: false
+        default: latest
+        type: string
+      release:
+        description: 'Publish as a GitHub release. Off means build and keep the artifacts for inspection only.'
+        required: false
+        default: false
+        type: boolean
+      replace:
+        description: 'Upload over assets already published. Breaks every hash pinned against them; see docs/the-archive.md.'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  pack:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: windows-2022,   os: windows, arch: x86_64 }
+          - { runner: windows-11-arm, os: windows, arch: aarch64 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: build and pack
+        id: pack
+        # bash on both legs, so the exit code is read the same way everywhere. 75 is "nothing to
+        # build for this target", an empty cell of the table and not a failure.
+        shell: bash
+        run: |
+          code=0
+          python -u tools/msys2.py --version "${{ inputs.version }}" --out dist || code=$?
+          if [ "$code" -eq 75 ]; then
+            echo "::notice::no msys2 for ${{ matrix.os }}/${{ matrix.arch }}; nothing to pack"
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          exit "$code"
+        timeout-minutes: 90
+      - uses: actions/upload-artifact@v4
+        if: steps.pack.outputs.skipped != 'true'
+        with:
+          name: msys2-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    # One release per exact version, holding every artifact of it — the version read back out of
+    # each manifest, because the two legs may cross midnight and disagree about the date.
+    needs: pack
+    if: ${{ inputs.release && !failure() && !cancelled() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: incoming, merge-multiple: true }
+      # Before anything is uploaded: a leg that built a version already published would otherwise
+      # land on it with --clobber. See tools/no_clobber.py and docs/the-archive.md.
+      - name: refuse to replace what is published
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/no_clobber.py incoming ${{ inputs.replace && '--replace' || '' }}
+      - name: publish one release per version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPLACE: ${{ inputs.replace && 'true' || '' }}
+        run: |
+          set -euo pipefail
+          versions=$(jq -r '.version' incoming/*.json | sort -u)
+          for version in $versions; do
+            tag="msys2-$version"
+            assets=()
+            for manifest in incoming/*.json; do
+              [ "$(jq -r '.version' "$manifest")" = "$version" ] || continue
+              # Both halves: the manifest is what the index generator reads, so a release holding
+              # only the archive is one the index cannot be rebuilt from.
+              assets+=("${manifest%.json}" "$manifest")
+            done
+            echo "== $tag: ${#assets[@]} artifact(s)"
+            if ! gh release view "$tag" >/dev/null 2>&1; then
+              gh release create "$tag" \
+                --title "msys2 $version" \
+                --notes "MSYS2 with the toolchain RubyInstaller needs to build gems with C extensions, for MixEngine: UCRT gcc on x86_64, clang on ARM64. Every artifact compiled and ran C from a directory it had been moved to before being published."
+            fi
+            gh release upload "$tag" "${assets[@]}" ${REPLACE:+--clobber}
+          done

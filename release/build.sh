@@ -37,6 +37,7 @@ valkey|build-valkey.yml|version||9.1|a line (9.1), an exact version (9.1.2), or 
 memcached|build-memcached.yml|version||1.6|a line (1.6), an exact version (1.6.45), or "latest".
 mongodb|build-mongodb.yml|version||8.0|a line (6.0, 7.0, 8.0, 8.2, 8.3), an exact version (8.3.11), or "latest".
 mongosh|build-mongosh.yml|version||2|a line (2 or 2.13), an exact version (2.13.0), or "latest".
+msys2|build-msys2.yml|version|latest|latest|"latest" only: the version is the date of the build. Windows only.
 mariadb|build-mariadb.yml|versions|all||A LIST: "all" (the default), "latest", or "11.8,10.11".
 mysql|build-mysql.yml|versions|all||A LIST: "all" (the default) or "5.6,8.4". NOT "latest".
 postgres|build-postgres.yml|versions|all||A LIST: "all" (the default), "latest", or "18,16.10".
