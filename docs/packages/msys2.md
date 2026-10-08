@@ -48,10 +48,18 @@ lines-and-updates model, and `release/build.sh msys2 latest` is the only way to 
 
 ## What `provides` says, and what MixEngine does with it
 
-`provides` names `bash` and the cell's compiler, because the index requires at least one entry and
-those are what the smoke test ran. MixEngine adds **none** of them to `bin/`: package commands come
-from a service recipe's clients, and MixEngine knows `msys2` as a *toolchain*, which it installs,
-lists and removes but never runs.
+`provides` names `bash` and the cell's compiler as `cc`, because the index requires at least one
+entry and those are what the smoke test ran. The compiler is `cc` on both cells, gcc on one and
+clang on the other: `gather.py` refuses a version whose cells name different commands. MixEngine
+adds **none** of them to `bin/`: package commands come from a service recipe's clients, and
+MixEngine knows `msys2` as a *toolchain*, which it installs, lists and removes but never runs.
+
+## What `keeps` says
+
+The rule's second half throws out static and import libraries, because a runtime needs none of them.
+A toolchain is the opposite case: the compiler links a gem's C extension against them. `keeps`
+names each directory holding one (`ucrt64/lib` or `clangarm64/lib`, and `usr/lib`), read off the
+tree when it is packed; the first publish was refused for the 1056 and 855 it had not declared.
 
 ## Measured
 
@@ -59,7 +67,7 @@ lists and removes but never runs.
 | --- | --- | --- |
 | Base downloaded | 43.1 MB (`.sfx.exe`) | the same base |
 | Artifact | 300.3 MB as `.tar.zst` measured locally; published as `.zip` (see below) | 479.4 MB as `.tar.zst` on the first ARM run |
-| Smoke test | `gcc.exe hello.c -> hello`, from a moved directory whose path holds a space | `clang.exe hello.c -> hello` |
+| Smoke test (`cc`) | `gcc.exe hello.c -> hello`, from a moved directory whose path holds a space | `clang.exe hello.c -> hello` |
 
 **Published as a zip**, as every Windows cell in this repository is. The first CI run packed the
 ARM64 tree with `tar --zstd` in 39 seconds and then watched the same command on `windows-2022` hang

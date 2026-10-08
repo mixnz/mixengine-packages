@@ -30,6 +30,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import borrow  # noqa: E402  — siblings, and this directory is not importable as a package
+import parity  # noqa: E402
 
 # The self-extracting base, which is what MSYS2 recommends for CI: Python's `tarfile` reads no zstd,
 # and this needs nothing but Windows to unpack.
@@ -53,9 +54,31 @@ def version_of(day: str) -> str:
 
 
 def provides(target: tuple[str, str]) -> dict[str, str]:
-    """What the smoke test runs. MixEngine puts none of it in ``bin/``: a toolchain has no clients."""
-    compiler = CELLS[target]["compiler"]
-    return {"bash": "usr/bin/bash.exe", Path(compiler).stem: compiler}
+    """What the smoke test runs. MixEngine puts none of it in ``bin/``: a toolchain has no clients.
+
+    The compiler is ``cc`` on both cells, gcc on one and clang on the other: `gather.py` refuses a
+    version whose cells name different commands, and what both of them offer is a C compiler.
+    """
+    return {"bash": "usr/bin/bash.exe", "cc": CELLS[target]["compiler"]}
+
+
+def keeps(tree: Path) -> dict[str, str]:
+    """Every directory holding a path the surplus rule throws out, kept with the reason.
+
+    The rule is for a runtime; this is a toolchain, and its static and import libraries are what
+    the compiler links a gem's C extension against. Named by the two leading components
+    (``ucrt64/lib``, ``usr/lib``) rather than file by file, the spelling `parity.declared` reads.
+    """
+    kept = {}
+    for path in tree.rglob("*"):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(tree).as_posix()
+        if parity.surplus(relative) is None:
+            continue
+        root = "/".join(relative.split("/")[:2])
+        kept[root] = "the compiler links C extensions against these: this package is a toolchain"
+    return kept
 
 
 def bash(tree: Path, script: str, tolerate: bool = False) -> None:
@@ -175,7 +198,7 @@ def main() -> None:
             },
             "provides": provides(target),
         }
-        manifest = borrow.declare(tree, manifest)
+        manifest = borrow.declare(tree, manifest, keeps=keeps(tree))
         manifest["smoke"] = smoke(tree, target)
         # **A zip, as every Windows cell here is** (`ruby.py`, `mongosh.py`). `tar --zstd` on the
         # `windows-2022` runner hung for its whole thirty minutes on this tree on 2026-10-08 while
