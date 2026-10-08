@@ -135,7 +135,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          (cd dist && ls -1 ./*.toml ./*.minisig | sed 's|^\./||') | sort > expected.txt
+          # The starters are the gallery's too: without them here this step deletes what the step
+          # above has just uploaded.
+          shopt -s nullglob
+          (cd dist && ls -1 ./*.toml ./*.minisig ./*-starter.zip | sed 's|^\./||') | sort > expected.txt
           gh release view "$BLUEPRINT_TAG" --json assets -q '.assets[].name' | sort > published.txt
           comm -13 expected.txt published.txt > orphans.txt
           while read -r orphan; do
@@ -157,6 +160,10 @@ jobs:
           for file in downloaded/*.toml; do
             minisign -V -m "$file" -p blueprints.pub
             cmp "$file" "dist/$(basename "$file")"
+          done
+          shopt -s nullglob
+          for file in dist/*-starter.zip; do
+            cmp "$file" "downloaded/$(basename "$file")"
           done
 
       - uses: actions/upload-artifact@v4
