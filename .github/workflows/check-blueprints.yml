@@ -37,6 +37,8 @@ env:
   PUBLISHED: https://github.com/${{ github.repository }}/releases/download/blueprints
   GALLERY: mixengine/crates/mixengine-core/src/blueprints/gallery
   TRUST: mixengine/crates/mixengine-core/src/blueprints/trust.rs
+  # The starters publish-blueprints puts beside the gallery (mixlab T205b).
+  STARTERS: mixengine/crates/mixengine-core/src/blueprints/starters
 
 jobs:
   check:
@@ -78,12 +80,18 @@ jobs:
         # `shell: bash` and not the default, because the default is `bash -e` *without* pipefail:
         # piping into tee would hand the step tee's exit code and a drifted file would pass.
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          set -o pipefail
+          gh release view blueprints --json assets -q '.assets[].name' > assets.txt
           python tools/blueprints.py \
             --gallery "$GALLERY" \
             --key-source "$TRUST" \
             --pub blueprints.pub \
-            --published "$PUBLISHED" | tee blueprints.log
+            --published "$PUBLISHED" \
+            --starters "$STARTERS" \
+            --assets assets.txt | tee blueprints.log
 
       # A failure here is not "the build is broken", it is "what people can download is not what
       # this build ships", which reads very differently to whoever opens it.
