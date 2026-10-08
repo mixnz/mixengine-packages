@@ -65,5 +65,28 @@ class Write(unittest.TestCase):
         self.assertEqual(list(root["kinds"]), ["caddy"])
 
 
+class Lacks(unittest.TestCase):
+    """T206: an artifact's `lacks` reaches the index, where MixEngine can read it."""
+
+    def collected(self, manifest: dict) -> dict:
+        directory = Path(tempfile.mkdtemp())
+        archive = directory / "ruby-3.4.11-windows-x86_64.zip"
+        archive.write_bytes(b"zip")
+        (directory / f"{archive.name}.json").write_text(json.dumps(manifest))
+        found = mkindex.collect(directory, "https://example.invalid/releases/download")
+        return found[0][2]
+
+    def manifest(self, **extra) -> dict:
+        return {"kind": "ruby", "version": "3.4.11", "os": "windows", "arch": "x86_64",
+                "provides": {"ruby": "bin/ruby.exe"}, "smoke": {"relocated": True}, **extra}
+
+    def test_lacks_reaches_the_index(self):
+        lacks = {"native gems": "no compiler", "yjit": "not built"}
+        self.assertEqual(self.collected(self.manifest(lacks=lacks))["lacks"], lacks)
+
+    def test_an_artifact_lacking_nothing_writes_no_field(self):
+        self.assertNotIn("lacks", self.collected(self.manifest()))
+
+
 if __name__ == "__main__":
     unittest.main()

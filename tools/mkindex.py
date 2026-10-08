@@ -91,7 +91,7 @@ def collect(directory: Path, base_url: str) -> list[dict]:
             "size": archive.stat().st_size,
             "provides": manifest["provides"],
         }
-        for optional in ("requires", "extension_dir", "extensions"):
+        for optional in ("requires", "extension_dir", "extensions", "lacks"):
             if optional in manifest:
                 artifact[optional] = manifest[optional]
 

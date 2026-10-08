@@ -86,6 +86,12 @@
             }
           }
         },
+        "lacks": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "string" },
+          "description": "What this cell cannot do that the other cells of the same version can, mapped to why: copied from the artifact manifest (see artifact.schema.json). A daemon shows it where the release is chosen; it does not judge it. Ruby on Windows carries `native gems` and `yjit` at the time of writing."
+        },
         "extension_dir": {
           "type": "string",
           "description": "Where dynamically loadable extensions live inside the archive, relative to its root. Present whenever the runtime can load any; the generated config always sets this explicitly, because upstream PHP for Windows bakes an absolute C:\\php\\ext that would otherwise be consulted by accident on a machine where it happens to exist."
