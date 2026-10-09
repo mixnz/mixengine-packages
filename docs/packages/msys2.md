@@ -61,6 +61,21 @@ A toolchain is the opposite case: the compiler links a gem's C extension against
 names each directory holding one (`ucrt64/lib` or `clangarm64/lib`, and `usr/lib`), read off the
 tree when it is packed; the first publish was refused for the 1056 and 855 it had not declared.
 
+## What a gem's MSYS2 packages bring
+
+A gem that declares `msys2_mingw_dependencies` (Rails 8's `ruby-vips` asks for libvips) makes
+RubyInstaller run `pacman -S --needed --noconfirm <package>` inside this tree. pacman installs the
+package and its dependencies and **none of its optional dependencies**: libvips loads without its
+heif, jxl and magick modules until `mingw-w64-ucrt-x86_64-libheif`, `-libjxl` and `-imagemagick` are
+added with `usr/bin/pacman -S` from this package's directory.
+
+The package database is the one of the build date, and measured on 2026-10-09 that costs nothing:
+every file a 2026-10-08 database named still downloaded from `mirror.msys2.org` and
+`repo.msys2.org`, which keeps superseded versions for a long time. A one-off 404 from one mirror is
+pacman moving on to the next. Should a database ever be old enough for its files to be gone, the
+answer is a newer `msys2` from `mix package available`, not `pacman -Sy` inside this one: a refreshed
+database with the old packages installed is the partial upgrade MSYS2 does not support.
+
 ## Measured
 
 | | x86_64 | aarch64 |
