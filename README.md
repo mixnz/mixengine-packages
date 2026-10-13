@@ -98,6 +98,7 @@ starts at 20.0.0 because that is upstream's first build for it.
 | **3.12** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **3.13** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **3.14** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **3.15** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 The 3.10 line has no ARM64 Windows build in `python-build-standalone`, which is the whole of that
 absence.
