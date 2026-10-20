@@ -78,6 +78,9 @@ def main() -> None:
                         help="an exact version (9.7.1). Not a line: tools/mysql.py --plan resolves "
                              "those, once, for every cell at the same time.")
     parser.add_argument("--out", default=Path("dist"), type=Path)
+    parser.add_argument("--trial", action="store_true",
+                        help="the run publishes no release, so a line not packed yet is packed "
+                             "rather than refused")
     arguments = parser.parse_args()
 
     version = arguments.version.strip()
@@ -88,7 +91,7 @@ def main() -> None:
             f"`tools/mysql.py --plan` and pass what it printed."
         )
     line = ".".join(version.split(".")[:2])
-    if line not in mysql.LINES:
+    if line not in mysql.LINES and not arguments.trial:
         raise SystemExit(f"this repository packs MySQL {', '.join(mysql.LINES)}, not {line}")
 
     target = borrow.host("MySQL")

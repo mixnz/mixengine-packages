@@ -111,7 +111,7 @@ jobs:
         shell: bash
         run: |
           code=0
-          python -u tools/mysql_borrow.py --version "${{ matrix.version }}" --out dist || code=$?
+          python -u tools/mysql_borrow.py --version "${{ matrix.version }}" --out dist ${{ !inputs.release && '--trial' || '' }} || code=$?
           if [ "$code" -eq 75 ]; then
             echo "::notice::no MySQL ${{ matrix.version }} for ${{ matrix.os }}/${{ matrix.arch }}; nothing to pack"
             echo "skipped=true" >> "$GITHUB_OUTPUT"
