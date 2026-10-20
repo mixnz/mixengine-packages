@@ -1,6 +1,7 @@
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
 
@@ -154,7 +155,8 @@ class Gather(unittest.TestCase):
         runs = {"build-mysql.yml": [
             {"displayTitle": "build mysql 8.0.45", "conclusion": "failure"}] * 3}
         plan, _ = watch.gather(
-            FakeGh(runs=runs), {"mysql": ["8.0.44"]}, ask=lambda kind, lines: ["8.0.45"]
+            FakeGh(runs=runs), {"mysql": ["8.0.44"]}, ask=lambda kind, lines: ["8.0.45"],
+            lts=lambda: {"8.0"},
         )
         self.assertEqual(plan.skipped, [("mysql", "8.0.45", 3)])
 
@@ -350,6 +352,33 @@ class NotOffered(unittest.TestCase):
         )
         self.assertEqual(plan.new_lines, [("go", "1.28"), ("go", "1.29")])
 
+    def test_a_mysql_line_without_its_own_track_is_not_reported_as_new(self):
+        plan, _ = watch.gather(FakeGh(), {"mysql": ["9.7.2"]},
+                               ask=lambda kind, lines: ["9.7.2", "26.7.0", "26.10.0", "28.4.0"],
+                               lts=lambda: {"8.0", "8.4", "9.7", "28.4"})
+        self.assertEqual(plan.new_lines, [("mysql", "28.4")])
+        self.assertEqual(plan.trials, [("mysql", "28.4.0")])
+
+    def test_every_mysql_line_is_news_while_the_tracks_cannot_be_read(self):
+        def unreadable():
+            raise OSError("repo.mysql.com answered 503")
+
+        for lts in (unreadable, set):
+            plan, _ = watch.gather(FakeGh(), {"mysql": ["9.7.2"]},
+                                   ask=lambda kind, lines: ["9.7.2", "26.7.0"], lts=lts)
+            self.assertEqual(plan.new_lines, [("mysql", "26.7")])
+
+    def test_mysql_tracks_are_read_off_the_repository_listing(self):
+        listing = (b'<A HREF="mysql-8.4-community/">mysql-8.4-community/</A>\n'
+                   b'<A HREF="mysql-9.7-community/">mysql-9.7-community/</A>\n'
+                   b'<A HREF="mysql-innovation-community/">mysql-innovation-community/</A>\n'
+                   b'<A HREF="mysql-cluster-9.7-community/">mysql-cluster-9.7-community/</A>\n'
+                   b'<A HREF="mysql-tools-9.7-community/">mysql-tools-9.7-community/</A>\n')
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = listing
+        with mock.patch.object(watch.urllib.request, "urlopen", return_value=response):
+            self.assertEqual(watch.mysql_lts_lines(), {"8.4", "9.7"})
+
 
 class Trials(unittest.TestCase):
     def test_a_new_line_is_tried_at_its_newest_version(self):
@@ -470,7 +499,7 @@ class Ignored(unittest.TestCase):
              "createdAt": "2026-09-30T10:00:00Z"}] * 3}
         plan, _ = watch.gather(FakeGh(runs=runs), {"mysql": ["8.0.44"]},
                                ask=lambda kind, lines: ["8.0.45"],
-                               ignored=self.IGNORE, today="2027-01-05")
+                               ignored=self.IGNORE, today="2027-01-05", lts=lambda: {"8.0"})
         self.assertEqual(plan.build, [("mysql", "8.0.45")])
 
     def test_the_file_must_say_why_and_until_when(self):

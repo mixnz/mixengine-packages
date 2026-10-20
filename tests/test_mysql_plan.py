@@ -24,6 +24,12 @@ class ExactVersion(unittest.TestCase):
         with self.assertRaises(SystemExit):
             mysql.legs("6.0.11")
 
+    def test_a_trial_of_a_new_line_borrows_every_cell(self):
+        with mock.patch.object(mysql, "resolve", side_effect=lambda spec: spec):
+            planned = mysql.legs("28.4.0", trial=True)
+        self.assertEqual(planned["macos"] + planned["linux"], [])
+        self.assertEqual({leg["version"] for leg in planned["borrow"]}, {"28.4.0"})
+
 
 if __name__ == "__main__":
     unittest.main()

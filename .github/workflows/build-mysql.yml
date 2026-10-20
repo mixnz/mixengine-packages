@@ -66,8 +66,9 @@ jobs:
           set -euo pipefail
           # Everything explanatory goes to stdout before the JSON — which version each line resolved
           # to and what was refused on the way — so the log is readable and the last line is the
-          # answer.
-          python -u tools/mysql.py --version "${{ inputs.versions }}" --plan | tee plan.txt
+          # answer. A run without a release is a trial, which may name a line not packed yet: that is
+          # how the watcher learns whether the recipes already handle a new one.
+          python -u tools/mysql.py --version "${{ inputs.versions }}" --plan ${{ !inputs.release && '--trial' || '' }} | tee plan.txt
           tail -1 plan.txt > legs.json
           for key in borrow macos linux; do
             echo "$key=$(python -c "import json; print(json.dumps(json.load(open('legs.json'))['$key']))")" >> "$GITHUB_OUTPUT"

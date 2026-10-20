@@ -19,6 +19,7 @@ import argparse
 import datetime
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -42,6 +43,21 @@ LINE_DEPTH = {"node": 1, "java": 1, "postgres": 1}
 # odd-numbered lines are Current releases that never become LTS and end after about eight months;
 # the Node row has only ever carried the even ones.
 NOT_OFFERED = {"node": lambda line: int(line) % 2 == 1}
+
+# MySQL's lines after 9.7 are named by calendar (26.7, 26.10), and upstream says the name does not
+# tell an Innovation release from an LTS one. Its package repository does: every LTS line has a
+# track of its own, mysql-9.7-community/, and every Innovation release shares
+# mysql-innovation-community/. So a new MySQL line is news only once it has a track, which is read
+# on every run rather than written here; until it can be read, every line is news.
+MYSQL_TRACKS = "https://repo.mysql.com/yum/"
+
+
+def mysql_lts_lines(url: str = MYSQL_TRACKS) -> set[str]:
+    """The MySQL lines with a track of their own, which are the LTS ones."""
+    with urllib.request.urlopen(url, timeout=60) as response:
+        body = response.read().decode("utf-8", "replace")
+    return set(re.findall(r'href="mysql-(\d+\.\d+)-community/"', body, re.IGNORECASE))
+
 
 # kind -> (workflow, the input its version goes in). The three list kinds are given a list of one,
 # so one run always names exactly one version.
@@ -154,11 +170,13 @@ def floors(kind: str, versions: list[str], tags: dict[str, str]) -> dict[str, st
 
 def make_plan(index: dict[str, list[str]], upstream: dict[str, list[str]], tags: dict[str, str],
               failures: dict[tuple[str, str], int], threshold: int = 3,
-              ignored: dict | None = None, today: str | None = None) -> Plan:
+              ignored: dict | None = None, today: str | None = None,
+              not_offered: dict | None = None) -> Plan:
     """Decide what to build. Pure: everything it knows is passed in. *tags* maps each release tag
     to when it was created; *ignored* is `read_ignore`'s answer, honoured while *today* is before
-    each entry's until."""
+    each entry's until; *not_offered* is `NOT_OFFERED` unless `gather` read more."""
     ignored = ignored or {}
+    not_offered = NOT_OFFERED if not_offered is None else not_offered
     today = today or datetime.date.today().isoformat()
     plan = Plan()
     for kind in sorted(index):
@@ -171,7 +189,7 @@ def make_plan(index: dict[str, list[str]], upstream: dict[str, list[str]], tags:
         for version in sorted(set(upstream[kind]), key=parts):
             line = line_of(kind, version)
             if line not in floor:
-                if parts(line) > parts(top) and not NOT_OFFERED.get(kind, lambda _: False)(line):
+                if parts(line) > parts(top) and not not_offered.get(kind, lambda _: False)(line):
                     new_lines[line] = version  # ascending, so the last one written is the newest
                 continue
             if parts(version) <= parts(floor[line]) or version in index[kind]:
@@ -257,7 +275,7 @@ def read_index(url: str = INDEX_URL) -> dict[str, list[str]]:
 
 
 def gather(gh, index: dict[str, list[str]], ask=upstream.versions, ignored: dict | None = None,
-           today: str | None = None) -> tuple[Plan, dict[str, str]]:
+           today: str | None = None, lts=mysql_lts_lines) -> tuple[Plan, dict[str, str]]:
     """Ask upstream and GitHub what `make_plan` needs. A kind that cannot be asked is reported."""
     ignored = ignored or {}
     answers: dict[str, list[str]] = {}
@@ -280,7 +298,19 @@ def gather(gh, index: dict[str, list[str]], ask=upstream.versions, ignored: dict
             counted = failures_by_title(runs, since)
             if title(kind, version) in counted:
                 failures[(kind, version)] = counted[title(kind, version)]
-    plan = make_plan(index, answers, gh.tags(), failures, ignored=ignored, today=today)
+    not_offered = dict(NOT_OFFERED)
+    if "mysql" in answers:
+        try:
+            tracked = lts()
+        except (OSError, ValueError) as error:
+            tracked = set()
+            print(f"{MYSQL_TRACKS} could not be read ({error}); every new MySQL line is news",
+                  file=sys.stderr)
+        # An empty answer is a page that changed shape, and is no reason to stay quiet.
+        if tracked:
+            not_offered["mysql"] = lambda line: line not in tracked
+    plan = make_plan(index, answers, gh.tags(), failures, ignored=ignored, today=today,
+                     not_offered=not_offered)
     for kind, version in plan.trials:
         wanted = title(kind, version) + NO_RELEASE
         for run in runs_of.get(kind, []):  # newest first

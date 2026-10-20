@@ -515,13 +515,17 @@ def resolve(line: str) -> str:
     )
 
 
-def legs(spec: str) -> dict[str, list[dict[str, str]]]:
+def legs(spec: str, trial: bool = False) -> dict[str, list[dict[str, str]]]:
     """What the workflow's three matrices are built from: one exact version per line, and its cells.
 
     Three lists rather than a version list, because **which recipe a cell uses depends on the
     version and not only on the cell** — 5.6 compiles on macOS where 9.7 borrows — and an ``if:`` in
     the workflow deciding that would be the same fact written in two places. Splitting `linux` from
     `macos` is the third: the compiled Linux legs run inside a container and the macOS ones cannot.
+
+    A *trial* builds without a release, so it may name a line not in ``LINES``: the watcher tries a
+    new line once to show whether the recipes already handle it, and a new line is never one of
+    the compiled ones, so every cell borrows. Adding the line is still a person's decision.
     """
     wanted = LINES if spec.strip() == "all" else tuple(
         piece.strip() for piece in spec.split(",") if piece.strip()
@@ -529,7 +533,7 @@ def legs(spec: str) -> dict[str, list[dict[str, str]]]:
     # A piece may be a line (8.4) or an exact version of one (8.4.11); `resolve` answers both,
     # because a version is a prefix of itself. The line is what decides which recipe a cell uses.
     unknown = [piece for piece in wanted if ".".join(piece.split(".")[:2]) not in LINES]
-    if unknown:
+    if unknown and not trial:
         raise SystemExit(
             f"this repository packs MySQL {', '.join(LINES)}; it was asked for "
             f"{', '.join(unknown)}. Adding a line is a roadmap entry rather than an input."
@@ -676,6 +680,9 @@ def main() -> None:
     parser.add_argument("--plan", action="store_true",
                         help="print the legs --version expands to, as JSON, and pack nothing. Used "
                              "by the workflow to fan one run out over five lines and three recipes.")
+    parser.add_argument("--trial", action="store_true",
+                        help="the run publishes no release, so a line not packed yet is planned "
+                             "rather than refused")
     arguments = parser.parse_args()
     if not arguments.plan:
         raise SystemExit(
@@ -684,7 +691,7 @@ def main() -> None:
         )
     # Everything explanatory has already gone to stdout through `resolve`, so the workflow reads the
     # last line rather than the whole of it.
-    print(json.dumps(legs(arguments.version)))
+    print(json.dumps(legs(arguments.version, trial=arguments.trial)))
 
 
 if __name__ == "__main__":
