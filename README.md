@@ -150,6 +150,7 @@ all four, where Temurin has it on 21 alone. The Linux cells name the system libr
 | --- | :---: | :---: | :---: | :---: | :---: | :---: |
 | **2.2** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **2.10** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **2.11** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 One file for every cell — `composer.phar`, run by whichever PHP MixEngine resolves — packed six
 times because the index has no cell for a file that runs everywhere; the page says why that is
