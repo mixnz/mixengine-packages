@@ -81,7 +81,7 @@ jobs:
           - { runner: ubuntu-22.04-arm, os: linux,   arch: aarch64, recipe: mariadb_deb.py }
           # Built: upstream has never published a macOS build, on either architecture, and its
           # Windows zip is x86_64 only.
-          - { runner: macos-14,         os: macos,   arch: aarch64, recipe: mariadb_build.py }
+          - { runner: macos-15,         os: macos,   arch: aarch64, recipe: mariadb_build.py }
           - { runner: macos-15-intel,   os: macos,   arch: x86_64,  recipe: mariadb_build.py }
           - { runner: windows-11-arm,   os: windows, arch: aarch64, recipe: mariadb_build.py }
     runs-on: ${{ matrix.target.runner }}

@@ -86,7 +86,7 @@ jobs:
         target:
           # Borrowed from EnterpriseDB: a Windows zip, and one universal macOS zip for both cells.
           - { runner: windows-2022,     os: windows, arch: x86_64,  recipe: postgres.py }
-          - { runner: macos-14,         os: macos,   arch: aarch64, recipe: postgres.py }
+          - { runner: macos-15,         os: macos,   arch: aarch64, recipe: postgres.py }
           - { runner: macos-15-intel,   os: macos,   arch: x86_64,  recipe: postgres.py }
           # Borrowed from the project's own apt repository, and lifted out of /usr with the layout
           # kept: EDB stopped publishing Linux tarballs and postgresql.org publishes source only.

@@ -91,7 +91,7 @@ CELLS = {
 # demonstrated building with MSVC on ARM64, and for 8.0 and newer it is a build nobody here has
 # attempted.
 RUNNERS = {
-    ("macos", "aarch64"): "macos-14",
+    ("macos", "aarch64"): "macos-15",
     ("macos", "x86_64"): "macos-15-intel",
     ("linux", "x86_64"): "ubuntu-22.04",
     ("linux", "aarch64"): "ubuntu-22.04-arm",

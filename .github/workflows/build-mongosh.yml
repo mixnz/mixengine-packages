@@ -41,7 +41,7 @@ jobs:
       matrix:
         include:
           - { runner: windows-2022,     os: windows, arch: x86_64 }
-          - { runner: macos-14,         os: macos,   arch: aarch64 }
+          - { runner: macos-15,         os: macos,   arch: aarch64 }
           - { runner: macos-15-intel,   os: macos,   arch: x86_64 }
           # 22.04 for the reason `build-mongodb.yml` states at length: an artifact's glibc floor is
           # the highest floor of anything in it. mongosh bundles nothing, so this buys less here

@@ -71,13 +71,13 @@ LIBRARIES = {
     },
     "apr": {
         "version": "1.7.6",
-        "url": "https://downloads.apache.org/apr/apr-1.7.6.tar.gz",
+        "url": "https://archive.apache.org/dist/apr/apr-1.7.6.tar.gz",
         "sha256": "6a10e7f7430510600af25fabf466e1df61aaae910bf1dc5d10c44a4433ccc81d",
         "licence": ("LICENSE", "apr-LICENSE"),
     },
     "apr-util": {
         "version": "1.6.5",
-        "url": "https://downloads.apache.org/apr/apr-util-1.6.5.tar.gz",
+        "url": "https://archive.apache.org/dist/apr/apr-util-1.6.5.tar.gz",
         "sha256": "f43a1c8c79eef497a022ec6c99dddbdf57e42001da6ccbfae259631ed5aa2805",
         "licence": ("LICENSE", "apr-util-LICENSE"),
     },
